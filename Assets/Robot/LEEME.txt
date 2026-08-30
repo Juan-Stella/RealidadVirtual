@@ -1,0 +1,48 @@
+FRANKA EMIKA PANDA — MODELO PARA UNITY  (v2, corregido)
+========================================================
+Origen: franka_ros / franka_description (Apache-2.0).
+
+QUE CAMBIO RESPECTO DE LA v1 (importante)
+-----------------------------------------
+1. AHORA TIENE MASAS REALES (17.4 kg en total, el Panda real pesa ~18 kg).
+   En el xacro de franka las inercias solo se emiten cuando se genera para
+   Gazebo; al expandir con gazebo:=false se perdian. Sin masa, Unity le asigna
+   1 kg por defecto a cada eslabon y el ajuste del drive se vuelve impredecible.
+
+2. SE ELIMINARON LOS 9 LINKS "_sc" (self-collision).
+   Eran cilindros y esferas que se SUPERPONEN a proposito con la geometria real
+   del robot. En ROS no molestan porque MoveIt los usa solo para chequear
+   auto-colision con una matriz que ignora los solapamientos. En Unity se
+   convierten en colliders fisicos interpenetrados y PhysX genera fuerzas
+   enormes para separarlos: el brazo se sacude o sale volando sin importar
+   cuanto damping le pongas. ESTA ERA LA CAUSA DEL DESCONTROL.
+
+La cinematica es identica a la v1: mismas juntas, mismos limites, mismo alcance.
+
+ESTRUCTURA — copiar la carpeta "Robot" completa dentro de Assets/
+------------------------------------------------------------------
+    Assets/Robot/panda.urdf
+    Assets/Robot/franka_description/meshes/visual/*.dae
+    Assets/Robot/franka_description/meshes/collision/*.stl
+
+El .urdf va AL LADO de la carpeta franka_description, NO adentro. El importador
+resuelve "package://franka_description/..." desde la carpeta del .urdf; si lo
+ponés adentro busca franka_description/franka_description/... y falla.
+
+IMPORTAR
+--------
+Click derecho sobre panda.urdf > "Import Robot from Selected URDF file"
+  - Axis Type: Y Axis
+  - Mesh Decimation: No Decimation
+Despues de importar:
+  - Quitar el componente "Controller" (boton Remove Controller en Urdf Robot).
+  - Verificar que panda_link0 tenga ArticulationBody con "Immovable" tildado.
+
+CONTENIDO
+---------
+Brazo : panda_joint1..7 (revolute)
+Punta : panda_hand_tcp
+Pinza : panda_finger_joint1/2 (prismaticas, 0 a 0.04 m por dedo)
+        joint2 tiene tag "mimic" que el importador NO implementa:
+        hay que comandar los dos dedos por separado.
+Mallas: visual ~134.900 tri | colision ~2.300 tri

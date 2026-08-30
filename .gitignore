@@ -1,0 +1,63 @@
+# .gitignore para proyecto Unity — va en la raíz (junto a Assets/, Packages/, ProjectSettings/)
+# Fuente: https://github.com/github/gitignore/blob/main/Unity.gitignore
+
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# Capturas de memoria y grabaciones (pesan mucho)
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Plugin autogenerado de JetBrains Rider
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# Cache de Visual Studio / Gradle
+.vs/
+.gradle/
+
+# Archivos de solución/proyecto autogenerados
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Meta files autogenerados
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Reporte de crash
+sysinfo.txt
+
+# Builds
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crashlytics
+crashlytics-build.properties
+
+# Addressables empaquetados
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+
+# StreamingAssets autogenerados de Android
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*

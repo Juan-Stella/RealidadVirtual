@@ -1,0 +1,23 @@
+MODELO FRANKA EMIKA PANDA — PARA UNITY (URDF Importer)
+=======================================================
+Origen: franka_ros / franka_description (Apache-2.0). URDF expandido desde xacro
+(panda.urdf.xacro con hand:=true, gazebo:=false).
+
+PASOS:
+1. Instalar el URDF Importer en Unity:
+   Window > Package Manager > "+" > Add package from git URL:
+   https://github.com/Unity-Technologies/URDF-Importer.git?path=/com.unity.robotics.urdf-importer
+2. Copiar TODA la carpeta "franka_description" dentro de Assets/ del proyecto.
+   (El .urdf usa rutas package://franka_description/... que resuelven con este nombre de carpeta.)
+3. Click derecho sobre panda.urdf > "Import Robot from Selected URDF file".
+   - Axis Type: Y-axis (Unity)
+   - Mesh Decimation / Convex: dejar por defecto para empezar.
+4. Queda un GameObject "panda" con un ArticulationBody por junta.
+
+JUNTAS DEL BRAZO (en orden para el script PandaArm): 
+  panda_joint1 ... panda_joint7  (todas revolute)
+Las prismáticas de los dedos (panda_finger_joint1/2) no las controla el script.
+
+NOTA RENDIMIENTO (celular/VR):
+  Las mallas visuales .dae son de alta densidad (~11 MB). Para VR en el Poco
+  conviene reducir polígonos (decimar) o usar las de colisión como visual simplificada.
