@@ -11231,13 +11231,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PandaIK
   endEffector: {fileID: 317432441}
   target: {fileID: 142527924}
-  orientationWeight: 0.5
+  orientationWeight: 0
   approachDirection: {x: 0, y: -1, z: 0}
   toolReference: {fileID: 1821954466}
-  lambda: 0.1
-  maxStepMeters: 0.05
+  lambda: 0.2
+  maxStepMeters: 0.03
   maxStepDegrees: 8.6
-  speedFactor: 0.6
+  speedFactor: 0.4
+  maxLeadDegrees: 2
   toleranceMeters: 0.005
   toleranceDegrees: 3
   resumeFactor: 2
@@ -11281,7 +11282,7 @@ MonoBehaviour:
   - {fileID: 1683445467}
   stiffness: 10000
   damping: 1000
-  forceLimit: 1000
+  forceLimit: 100000
   home:
   - 0
   - -45
@@ -12507,14 +12508,17 @@ MonoBehaviour:
   ReferenceCamera: {fileID: 0}
   MoveSpeed: 0.3
   CameraRelative: 1
+  BaseApproach: {x: 0, y: -1, z: 0}
   OrientationWeight: 0.3
   MaxTiltFromVertical: 65
-  MinBaseRadius: 0.22
+  MinBaseRadius: 0.35
   MaxBaseRadius: 0.75
   MinHeightOverBase: -0.1
   MaxHeightOverBase: 0.6
   ShowTargetMarker: 1
   MarkerRadius: 0.012
+  PositionSmoothTime: 0.05
+  LogDiagnostics: 0
   AutoStartTask: 1
 --- !u!114 &1348903087
 MonoBehaviour:

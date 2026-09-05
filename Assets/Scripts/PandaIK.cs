@@ -67,6 +67,13 @@ public class PandaIK : MonoBehaviour
              "fluido y realista; mas alto lo hace mas brusco.")]
     [Range(0.1f, 1f)] public float speedFactor = 0.6f;
 
+    [Tooltip("ANTI-WINDUP. Cuanto puede adelantarse el target comandado respecto al angulo " +
+             "REAL de la junta, en grados. PandaArm.Nudge acumula sobre su propio target y " +
+             "nunca lo sincroniza con la realidad: si el brazo va atrasado, la IK sigue " +
+             "sumando incrementos y el comando se dispara, con sobrepaso y oscilacion al " +
+             "llegar. 2-4 grados va bien; mas bajo es mas firme pero mas lento.")]
+    [Range(0.5f, 15f)] public float maxLeadDegrees = 3f;
+
     [Header("Tolerancia")]
     public float toleranceMeters = 0.005f;
     public float toleranceDegrees = 3f;
@@ -115,21 +122,25 @@ public class PandaIK : MonoBehaviour
 
     public Vector3 ToolAxisWorld() => endEffector.TransformDirection(localApproach).normalized;
 
-    /// <summary>Con histeresis: una vez alcanzado, no reanuda hasta apartarse bastante.</summary>
-    public bool Reached
-    {
-        get
-        {
-            float f = Mathf.Max(1f, resumeFactor);
-            bool within = ErrorMeters <= toleranceMeters &&
-                          (orientationWeight <= 0f || ErrorDegrees <= toleranceDegrees);
-            bool outside = ErrorMeters > toleranceMeters * f ||
-                           (orientationWeight > 0f && ErrorDegrees > toleranceDegrees * f);
+    /// <summary>
+    /// Con histeresis: una vez alcanzado, no reanuda hasta apartarse bastante.
+    /// SOLO LECTURA: el estado se actualiza en UpdateSettled(), una vez por FixedUpdate.
+    /// Antes esto era un property con efecto colateral y OnDrawGizmos tambien lo leia,
+    /// asi que el dibujado (a framerate de render) pisaba el estado del servo.
+    /// </summary>
+    public bool Reached => settled;
 
-            if (settled && outside) settled = false;
-            else if (!settled && within) settled = true;
-            return settled;
-        }
+    /// <summary>Actualiza la histeresis. Llamar una sola vez por paso de fisica.</summary>
+    void UpdateSettled()
+    {
+        float f = Mathf.Max(1f, resumeFactor);
+        bool within = ErrorMeters <= toleranceMeters &&
+                      (orientationWeight <= 0f || ErrorDegrees <= toleranceDegrees);
+        bool outside = ErrorMeters > toleranceMeters * f ||
+                       (orientationWeight > 0f && ErrorDegrees > toleranceDegrees * f);
+
+        if (settled && outside) settled = false;
+        else if (!settled && within) settled = true;
     }
 
     void Awake()
@@ -164,9 +175,18 @@ public class PandaIK : MonoBehaviour
                          "el +Z local. Asigná panda_hand para que se mida solo.");
     }
 
+    bool wasSolving;
+
     void FixedUpdate()
     {
-        if (!solving || endEffector == null || target == null) return;
+        if (!solving || endEffector == null || target == null) { wasSolving = solving; return; }
+
+        // Al reanudar, alinear los targets comandados con la postura real. Evita el
+        // tiron inicial cuando el brazo se movio (o se asento por gravedad) con la IK apagada.
+        if (!wasSolving) arm.SyncTargetsToActual();
+        wasSolving = true;
+
+        UpdateSettled();
         if (Reached) return;
         Step();
     }
@@ -245,7 +265,24 @@ public class PandaIK : MonoBehaviour
         }
         float scale = (ratio > 1f) ? 1f / ratio : 1f;
 
-        for (int i = 0; i < PandaArm.N; i++) arm.Nudge(i, dDeg[i] * scale);
+        // --- Escritura de targets con ANTI-WINDUP ---
+        //
+        // PandaArm.Nudge acumula sobre su propio target[] y nunca lo compara con el angulo
+        // real. La IK, en cambio, mide el error con los transforms REALES. Si el brazo va
+        // atrasado (gravedad, inercia, drive saturado), la IK sigue viendo error grande y
+        // sigue sumando: el comando se adelanta cada vez mas y, cuando el brazo alcanza,
+        // sobrepasa y rebota. Ese es el picoteo.
+        //
+        // La cura es limitar cuanto puede adelantarse el comando respecto a la realidad.
+        // El recorte solo actua cuando el brazo se esta quedando atras; mientras sigue el
+        // ritmo, no interviene y la direccion del movimiento queda intacta.
+        for (int i = 0; i < PandaArm.N; i++)
+        {
+            float desired = arm.TargetDeg(i) + dDeg[i] * scale;
+            float actual  = arm.CurrentDeg(i);
+            desired = Mathf.Clamp(desired, actual - maxLeadDegrees, actual + maxLeadDegrees);
+            arm.SetTargetDeg(i, desired);
+        }
     }
 
     /// <summary>Arma la matriz aumentada [A | b] con A = J J^T + lambda^2 I.</summary>
