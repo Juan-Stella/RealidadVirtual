@@ -31,6 +31,18 @@ namespace FrankaVR.V5
         public float PipeGap = 0.005f;
         public float PipeInnerRatio = 0.82f;
         public int LineSamples = 60;
+        [Header("Mensula con cartelas")]
+        [Tooltip("Distancia del centro de trabajo a la cara de la placa vertical, hacia el robot.")]
+        // La torcha apunta hacia el robot en M1: acercar la pieza para que la muneca no quede al limite.
+        public Vector3 BracketShift = new Vector3(-0.10f, 0f, 0f);
+        public float BracketPlateOffset = 0.06f;
+        public float BracketBaseLength = 0.20f;
+        public float BracketWidth = 0.22f;
+        public float BracketPlateHeight = 0.10f;
+        public float BracketThickness = 0.010f;
+        public float GussetLeg = 0.07f;
+        public float GussetThickness = 0.008f;
+        public float GussetSpacing = 0.14f;
         public int CircleSamples = 84;
 
         [Header("Materiales")]
@@ -42,7 +54,8 @@ namespace FrankaVR.V5
         Transform _start;
         Transform _end;
         Transform _circleCenter;
-        Material _steelMat, _edgeMat, _supportMat;
+        Material _steelMat, _edgeMat, _supportMat, _clampMat;
+        readonly System.Collections.Generic.List<Mesh> _generatedMeshes = new System.Collections.Generic.List<Mesh>();
         int _workpieceLayer;
         float _referenceTopY;
         Vector3 _referenceCenter;
@@ -148,6 +161,7 @@ namespace FrankaVR.V5
                 case JointType.FilletT:     BuildTJoint(order); break;
                 case JointType.LapJoint:    BuildLapJoint(order); break;
                 case JointType.PipeButt:    BuildPipe(order); break;
+                case JointType.BracketFillet: BuildBracket(order); break;
                 default:                    BuildBeadOnPlate(order); break;
             }
 
@@ -237,6 +251,98 @@ namespace FrankaVR.V5
             _circleCenter = cg.transform;
         }
 
+        // Mensula: base sobre la mesa, placa vertical del lado del robot y dos cartelas.
+        // Las juntas miran al puesto del operario para que se vean desde la vista principal.
+        void BuildBracket(WorkOrder o)
+        {
+            float t = BracketThickness, top = _referenceTopY;
+            Vector3 c = _referenceCenter + BracketShift;
+            float face = c.x - BracketPlateOffset;           // cara de la placa vertical que mira al operario
+            float half = GussetSpacing * 0.5f;
+            MakeBox("Bracket_Base", new Vector3(c.x, top - t * 0.5f, c.z), new Vector3(BracketBaseLength, t, BracketWidth), _steelMat, true);
+            MakeBox("Bracket_Plate", new Vector3(face - t * 0.5f, top + BracketPlateHeight * 0.5f, c.z),
+                new Vector3(t, BracketPlateHeight, BracketWidth), _steelMat, true);
+            MakeGusset("Bracket_GussetL", new Vector3(face, top, c.z - half));
+            MakeGusset("Bracket_GussetR", new Vector3(face, top, c.z + half));
+
+            float inside = half - GussetThickness * 0.5f;      // cara interior de cada cartela (visible desde el operador)
+            float inner = half - GussetThickness * 0.5f - 0.014f; // margen para la boquilla junto a las cartelas
+            Vector3 up = Vector3.up;
+            switch (o.SeamIndex)
+            {
+                // Cartelas: cara interior, desde la placa hacia la punta de la cartela. Con 10 grados de arrastre
+                // el cuerpo de la torcha se inclina hacia la punta y no choca con la placa vertical.
+                case 1: SetSeam(new Vector3(face + 0.012f, top, c.z - inside), new Vector3(face + GussetLeg - 0.010f, top, c.z - inside), (up + Vector3.forward).normalized); break;
+                case 2: SetSeam(new Vector3(face + 0.012f, top, c.z + inside), new Vector3(face + GussetLeg - 0.010f, top, c.z + inside), (up + Vector3.back).normalized); break;
+                default: SetSeam(new Vector3(face, top, c.z + inner), new Vector3(face, top, c.z - inner), (up + Vector3.right).normalized); break;
+            }
+
+            // Puntos de armado en los extremos de las juntas y prensas del dispositivo: solo visuales.
+            Vector3[] tacks = {
+                new Vector3(face, top, c.z + inner + 0.004f), new Vector3(face, top, c.z - inner - 0.004f),
+                new Vector3(face + GussetLeg - 0.004f, top, c.z - inside), new Vector3(face + GussetLeg - 0.004f, top, c.z + inside) };
+            foreach (Vector3 p in tacks)
+            {
+                GameObject tack = MakeBox("Bracket_Tack", p, new Vector3(0.007f, 0.004f, 0.007f), _edgeMat, false);
+                tack.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+            }
+            for (int side = -1; side <= 1; side += 2)
+                MakeClamp(new Vector3(c.x + BracketBaseLength * 0.5f - 0.025f, top, c.z + side * (BracketWidth * 0.5f - 0.03f)));
+        }
+
+        void SetSeam(Vector3 start, Vector3 end, Vector3 normal)
+        {
+            Vector3 dir = (end - start).normalized;
+            _start = MakeMarker("SeamStartV5", start);
+            _end = MakeMarker("SeamEndV5", end);
+            _start.rotation = _end.rotation = Quaternion.LookRotation(dir, normal);
+        }
+
+        // Cartela triangular (prisma) con un cateto sobre la base y otro contra la placa vertical.
+        void MakeGusset(string name, Vector3 corner)
+        {
+            float l = GussetLeg, h = GussetThickness * 0.5f;
+            Vector3[] f = { new Vector3(0f, 0f, -h), new Vector3(l, 0f, -h), new Vector3(0f, l, -h) };
+            Vector3[] b = { new Vector3(0f, 0f, h), new Vector3(l, 0f, h), new Vector3(0f, l, h) };
+            var verts = new System.Collections.Generic.List<Vector3>();
+            var tris = new System.Collections.Generic.List<int>();
+            void Quad(Vector3 a, Vector3 bb, Vector3 cc, Vector3 d)
+            {
+                int i = verts.Count; verts.Add(a); verts.Add(bb); verts.Add(cc); verts.Add(d);
+                tris.AddRange(new[] { i, i + 1, i + 2, i, i + 2, i + 3 });
+            }
+            void Tri(Vector3 a, Vector3 bb, Vector3 cc)
+            {
+                int i = verts.Count; verts.Add(a); verts.Add(bb); verts.Add(cc);
+                tris.AddRange(new[] { i, i + 1, i + 2 });
+            }
+            Tri(f[0], f[2], f[1]); Tri(b[0], b[1], b[2]);
+            Quad(f[0], f[1], b[1], b[0]); Quad(f[1], f[2], b[2], b[1]); Quad(f[2], f[0], b[0], b[2]);
+            Mesh mesh = new Mesh { name = name + "_Mesh" };
+            mesh.SetVertices(verts); mesh.SetTriangles(tris, 0);
+            mesh.RecalculateNormals(); mesh.RecalculateBounds();
+            GameObject go = new GameObject(name);
+            go.layer = _workpieceLayer;
+            go.transform.SetParent(_root, true);
+            go.transform.position = corner;
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            go.AddComponent<MeshRenderer>().sharedMaterial = _steelMat;
+            MeshCollider collider = go.AddComponent<MeshCollider>();
+            collider.sharedMesh = mesh;
+            collider.convex = true;
+            _generatedMeshes.Add(mesh);
+        }
+
+        // Prensa de fijacion: cuerpo, brazo y tope de goma apretando la base.
+        void MakeClamp(Vector3 contact)
+        {
+            MakeBox("Clamp_Body", contact + new Vector3(0.035f, 0.012f, 0f), new Vector3(0.03f, 0.024f, 0.022f), _clampMat, false);
+            MakeBox("Clamp_Arm", contact + new Vector3(0.012f, 0.03f, 0f), new Vector3(0.05f, 0.008f, 0.012f), _clampMat, false);
+            MakeBox("Clamp_Handle", contact + new Vector3(0.055f, 0.045f, 0f), new Vector3(0.012f, 0.045f, 0.012f), _edgeMat, false)
+                .transform.rotation = Quaternion.Euler(0f, 0f, -35f);
+            MakeBox("Clamp_Pad", contact + new Vector3(-0.012f, 0.016f, 0f), new Vector3(0.012f, 0.022f, 0.012f), _edgeMat, false);
+        }
+
         void MakeLineMarkers(float seamLength, Vector3 center)
         {
             float len = Mathf.Clamp(seamLength > 0f ? seamLength : 0.20f, 0.08f, PlateLength * 0.88f);
@@ -262,7 +368,7 @@ namespace FrankaVR.V5
             Seam.ThicknessMm = o.ThicknessMm;
             Seam.IdealTravelAngle = o.IdealTravelAngle;
             // Invertir el avance invierte el lado (n x t): mismo lado fisico de inclinacion.
-            Seam.ReverseWorkSide = o.Shape == SeamShape.Line && WeldTowardRobot;
+            Seam.ReverseWorkSide = o.Shape == SeamShape.Line && WeldTowardRobot && o.Joint != JointType.BracketFillet;
             Seam.IdealWorkAngle = Seam.ReverseWorkSide ? -o.IdealWorkAngle : o.IdealWorkAngle;
             Seam.AngleToleranceDeg = o.AngleToleranceDeg;
 
@@ -292,6 +398,7 @@ namespace FrankaVR.V5
             _steelMat = new Material(sh); _steelMat.name = "V5_Steel"; _steelMat.color = SteelColor;
             _edgeMat = new Material(sh); _edgeMat.name = "V5_DarkEdge"; _edgeMat.color = EdgeColor;
             _supportMat = new Material(sh); _supportMat.name = "V5_Support"; _supportMat.color = SupportColor;
+            _clampMat = new Material(sh); _clampMat.name = "V5_Clamp"; _clampMat.color = new Color(0.62f, 0.10f, 0.08f);
 
             if (_steelMat.HasProperty("_Metallic")) _steelMat.SetFloat("_Metallic", 0.70f);
             if (_steelMat.HasProperty("_Glossiness")) _steelMat.SetFloat("_Glossiness", 0.30f);
@@ -365,6 +472,8 @@ namespace FrankaVR.V5
             SafeDestroy(_root.gameObject);
             _root = null;
             _start = _end = _circleCenter = null;
+            foreach (Mesh mesh in _generatedMeshes) if (mesh != null) SafeDestroy(mesh);
+            _generatedMeshes.Clear();
         }
 
         void OnDestroy()
@@ -372,6 +481,8 @@ namespace FrankaVR.V5
             if (_steelMat != null) SafeDestroy(_steelMat);
             if (_edgeMat != null) SafeDestroy(_edgeMat);
             if (_supportMat != null) SafeDestroy(_supportMat);
+            if (_clampMat != null) SafeDestroy(_clampMat);
+            foreach (Mesh mesh in _generatedMeshes) if (mesh != null) SafeDestroy(mesh);
         }
 
         static void SafeDestroy(Object obj)

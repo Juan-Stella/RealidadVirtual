@@ -33,15 +33,19 @@ namespace FrankaVR.V6
         TextMesh _headline, _metrics, _help, _alert, _gaugeValue;
         Transform _gaugeZone, _gaugeMarker;
         Material _gaugeTrackMat, _gaugeZoneMat, _gaugeMarkerMat, _accentMat;
-        const float GaugeWidth = 0.60f, GaugeY = 0.205f, GaugeRangeMm = 10f;
+        const float GaugeWidth = 0.60f, GaugeY = 0.205f, GaugeRangeMm = 30f; // distancia boquilla-pieza
         Renderer _bg, _alertBg;
         Material _bgMat, _alertMat;
-        GazeButton _pipeBack, _pipeForward;
+        GazeButton _pipeBack, _pipeForward, _clearButton, _executeButton;
+        WeldPathRecorder _recorder;
+        RobotCollisionGuard _collisions;
         WeldingTeleopController _teleop;
 
         void Start()
         {
             _teleop = FindAnyObjectByType<WeldingTeleopController>();
+            _recorder = FindAnyObjectByType<WeldPathRecorder>();
+            _collisions = FindAnyObjectByType<RobotCollisionGuard>();
             Resolve();
             Build();
             GazeInteractor pointer = FindFirstObjectByType<GazeInteractor>();
@@ -106,7 +110,7 @@ namespace FrankaVR.V6
                 MakeBar("HUD_GaugeTrack", new Vector3(0f, GaugeY, -0.002f), new Vector2(GaugeWidth, 0.016f), _gaugeTrackMat, -8);
                 _gaugeZone = MakeBar("HUD_GaugeZone", new Vector3(0f, GaugeY, -0.003f), new Vector2(0.1f, 0.016f), _gaugeZoneMat, -7);
                 _gaugeMarker = MakeBar("HUD_GaugeMarker", new Vector3(0f, GaugeY, -0.004f), new Vector2(0.007f, 0.034f), _gaugeMarkerMat, -6);
-                MakeText("GaugeLabel", new Vector3(-0.40f, GaugeY, -0.004f), 42, 0.0062f, new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter).text = "ARCO";
+                MakeText("GaugeLabel", new Vector3(-0.40f, GaugeY, -0.004f), 42, 0.0062f, new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter).text = "DIST.";
                 _gaugeValue = MakeText("GaugeValue", new Vector3(0.41f, GaugeY, -0.004f), 46, 0.0068f, new Color(0.94f, 0.97f, 1f), TextAnchor.MiddleCenter);
             }
 
@@ -119,6 +123,8 @@ namespace FrankaVR.V6
             GazeButton.CreateUI(_root, "VISTA", new Vector3(0f,-0.21f,-0.014f), 0.18f, () => Viewpoints.Next(), _bgMat);
             _pipeBack = GazeButton.CreateUI(_root, "CAÑO -", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(-15f), _bgMat);
             _pipeForward = GazeButton.CreateUI(_root, "CAÑO +", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(15f), _bgMat);
+            _clearButton = GazeButton.CreateUI(_root, "BORRAR", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.ClearProgram(), _bgMat);
+            _executeButton = GazeButton.CreateUI(_root, "EJECUTAR", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.ExecuteProgram(), _bgMat);
         }
 
         Transform MakeBar(string name, Vector3 localPos, Vector2 size, Material material, int order)
@@ -141,9 +147,11 @@ namespace FrankaVR.V6
             bool running = Course != null && Course.Phase == CoursePhaseV5.Running;
             bool exam = Course != null && Course.Mode == CourseModeV5.Exam;
             bool measured = Torch.HasArcSurface && Torch.ArcLenMm < 60f;
-            float ideal = Machine != null && Machine.Current != null ? Machine.Current.ArcLenIdealMm : 3.2f;
-            float half = ideal * 0.35f;
-            float arc = measured ? Torch.ArcLenMm : GaugeRangeMm;
+            // MIG: distancia boquilla-pieza (CTWD) = alambre libre + arco. Ideal ~15 mm.
+            float stickOut = Torch.RemainingMm < 40f ? Torch.RemainingMm : 0f;
+            float ideal = (Machine != null && Machine.Current != null ? Machine.Current.ArcLenIdealMm : 3.2f) + stickOut;
+            float half = 3f;
+            float arc = measured ? Torch.ArcLenMm + stickOut : GaugeRangeMm;
             bool good = measured && Mathf.Abs(arc - ideal) <= half;
             // En examen no se muestra la zona ideal: seria una pista de calidad.
             _gaugeZone.gameObject.SetActive(running && !exam);
@@ -152,10 +160,12 @@ namespace FrankaVR.V6
             _gaugeMarker.gameObject.SetActive(running && measured);
             _gaugeMarker.localPosition = new Vector3((Mathf.Clamp01(arc / GaugeRangeMm) - 0.5f) * GaugeWidth, GaugeY, -0.004f);
             Color neutral = new Color(0.94f, 0.97f, 1f);
-            _gaugeMarkerMat.color = exam ? neutral : good ? new Color(0.35f, 1f, 0.55f) : arc < 1.2f ? new Color(1f, 0.35f, 0.25f) : new Color(1f, 0.78f, 0.25f);
-            string value = !running ? "" : !measured ? "lejos" : arc > GaugeRangeMm ? "> 10 mm" : arc.ToString("0.0") + " mm";
+            _gaugeMarkerMat.color = exam ? neutral : good ? new Color(0.35f, 1f, 0.55f) : arc < ideal - half ? new Color(1f, 0.35f, 0.25f) : new Color(1f, 0.78f, 0.25f);
+            string value = !running ? "" : !measured ? "lejos" : arc > GaugeRangeMm ? "> 30 mm" : arc.ToString("0") + " mm";
             if (_gaugeValue.text != value) _gaugeValue.text = value;
+            bool recording = _recorder != null && _recorder.RecordingNow;
             _accentMat.color = !running ? new Color(0.20f, 0.55f, 0.75f, 0.95f) :
+                recording ? new Color(1f, 0.25f, 0.25f, 0.95f) :
                 Torch.Arcing ? new Color(0.30f, 0.95f, 0.50f, 0.95f) :
                 !string.IsNullOrEmpty(alert) ? new Color(1f, 0.70f, 0.20f, 0.95f) : new Color(0.20f, 0.55f, 0.75f, 0.95f);
         }
@@ -188,6 +198,9 @@ namespace FrankaVR.V6
             bool index = Course != null && Course.UsesPipeIndexer && Course.Phase == CoursePhaseV5.Running;
             _pipeBack.gameObject.SetActive(index);
             _pipeForward.gameObject.SetActive(index);
+            bool teach = !index && Course != null && Course.Phase == CoursePhaseV5.Running && Course.Stage == CourseStageV5.Teach;
+            _clearButton.gameObject.SetActive(teach);
+            _executeButton.gameObject.SetActive(teach);
             UpdateText();
         }
 
@@ -200,33 +213,43 @@ namespace FrankaVR.V6
             string id = Course != null ? Course.CurrentOrderId : "--";
             SetText(_headline, id + "  ·  " + phase, Width * 0.90f, 0.045f);
 
-            string arc = Torch != null && Torch.HasArcSurface ? Torch.ArcLenMm.ToString("0.0") + " mm" : "--";
-            string rod = Torch != null ? Torch.RemainingMm.ToString("0") + " mm" : "--";
+            bool running = Course != null && Course.Phase == CoursePhaseV5.Running;
+            bool teaching = running && Course.Stage == CourseStageV5.Teach;
+            string wire = Machine != null && Machine.Current != null ? Machine.Current.DiameterMm.ToString("0.0") + " mm" : "--";
             string amps = Machine != null ? Machine.Amperage.ToString("0") + " A" : "--";
+            string speed = Course != null ? Course.ProgramSpeedMmS.ToString("0.0") + " mm/s" : "--";
             string source = "Entrada: " + input + "    Vista: " + view;
-            // En practica, velocidad y angulos reales sobre la junta: lo que corrige un instructor.
-            if (_teleop != null && _teleop.HasSeamAngles && Course != null && Course.Phase == CoursePhaseV5.Running &&
-                Course.Mode == CourseModeV5.Training)
-                source = "Avance " + _teleop.TravelSpeedMmS.ToString("0.0") + " mm/s   Ángulo avance " +
-                    _teleop.TravelAngleDeg.ToString("0") + "° (" + Task.Seam.IdealTravelAngle.ToString("0") + "°)   trabajo " +
-                    _teleop.WorkAngleDeg.ToString("0") + "° (" + Task.Seam.IdealWorkAngle.ToString("0") + "°)";
-            string metrics = "Arco  " + arc + "   Varilla  " + rod + "   Corriente  " + amps + "\n" + source;
+            if (running && _recorder != null)
+                source = Course.Stage == CourseStageV5.Execute
+                    ? "Ejecutando programa  " + (_teleop != null ? (_teleop.PlaybackProgress * 100f).ToString("0") : "0") + " %"
+                    : "Trayectoria  " + _recorder.Count + " puntos   Cubierto  " + _recorder.CoveragePercent.ToString("0") + " %";
+            // En practica, angulos reales contra los ideales: lo que corrige un instructor.
+            if (teaching && _teleop != null && _teleop.HasSeamAngles && Course.Mode == CourseModeV5.Training)
+                source = "Ángulo avance " + _teleop.TravelAngleDeg.ToString("0") + "° (" + Task.Seam.IdealTravelAngle.ToString("0") +
+                    "°)  trabajo " + _teleop.WorkAngleDeg.ToString("0") + "° (" + Task.Seam.IdealWorkAngle.ToString("0") + "°)\n" + source;
+            string metrics = "Alambre " + wire + "   " + amps + "   Velocidad programa " + speed + "\n" + source;
             if (Task != null && Task.State == SessionState.Finished)
                 metrics = "Nota  " + Task.FinalScore.ToString("0") + "/100   Tiempo  " + Task.Elapsed.ToString("0") + " s\n" +
                     "Puntos correctos  " + Task.GoodPoints + "   Sin soldar  " + Task.UntouchedPoints;
-            SetText(_metrics, metrics, Width * 0.90f, 0.065f);
+            SetText(_metrics, metrics, Width * 0.90f, 0.085f);
 
-            bool running = Course != null && Course.Phase == CoursePhaseV5.Running;
-            if (running && !ShowHelpDuringRunning)
+            if (running && !ShowHelpDuringRunning && input == "Mando")
             {
-                string keys = Course != null && Course.UsesPipeIndexer ? "Z/X: girar caño · " : "";
-                if (_teleop != null && _teleop.SeamLocked) SetText(_help, _teleop.SeamHelp, Width * 0.90f, 0.045f);
-                else SetText(_help, keys + (Course.Mode == CourseModeV5.Training ? "B: acercar · V: ángulo · " : "") +
-                    "Espacio: arco · C: retirar · F: finalizar · F1: ayuda", Width * 0.90f, 0.045f);
+                // Con el mando ESP32 (lentes puestos) se muestran sus botones, no el teclado.
+                if (!teaching) SetText(_help, "El robot repite tu trayectoria con arco · RETIRAR: abortar", Width * 0.90f, 0.045f);
+                else if (_teleop != null && _teleop.SeamLocked) SetText(_help, "GRABANDO · palanca: avanzar (más palanca, más rápido) · apretada: distancia · inclinar el mando: ángulos", Width * 0.90f, 0.045f);
+                else SetText(_help, "ACERCAR: ir al inicio · gatillo: grabar · DESHACER (largo: borrar) · OK: ejecutar o elegir lo que mirás", Width * 0.90f, 0.045f);
+            }
+            else if (running && !ShowHelpDuringRunning)
+            {
+                if (!teaching) SetText(_help, "El robot repite tu trayectoria con arco · C: abortar", Width * 0.90f, 0.045f);
+                else if (_teleop != null && _teleop.SeamLocked) SetText(_help, "GRABANDO · " + _teleop.SeamHelp, Width * 0.90f, 0.045f);
+                else SetText(_help, (Course.Mode == CourseModeV5.Training ? "B: ir al inicio · V: ángulo · " : "") +
+                    "Espacio: grabar · Z: deshacer · R: borrar · Enter: ejecutar · F1: ayuda", Width * 0.90f, 0.045f);
             }
             else
             {
-                SetText(_help, "Ctrl: precision · Rueda: zoom · F1: ayuda\nEspacio: arco · R: recargar · Tab: electrodo · H: careta", Width * 0.90f, 0.060f);
+                SetText(_help, "Ctrl: precisión · Rueda: zoom · F1: ayuda\nTab: alambre · [ / ]: corriente · - / +: velocidad · H: careta", Width * 0.90f, 0.060f);
             }
 
             string alert = ComputeAlert();
@@ -242,17 +265,30 @@ namespace FrankaVR.V6
             if (Course != null && Course.Phase != CoursePhaseV5.Running) return "";
             if (_teleop != null && _teleop.Retracting) return "RETIRANDO HERRAMIENTA — mover para cancelar";
             if (_teleop != null && _teleop.Approaching) return "ACERCANDO PUNTA — B o mover para cancelar";
+            if (_collisions != null && _collisions.Colliding) return _collisions.CollisionLabel;
             if (_teleop != null && !string.IsNullOrEmpty(_teleop.AssistMessage)) return _teleop.AssistMessage;
+            if (Course != null && !string.IsNullOrEmpty(Course.ProgramMessage)) return Course.ProgramMessage;
+            if (_recorder != null && !string.IsNullOrEmpty(_recorder.Hint)) return _recorder.Hint;
             if (Torch.State == ArcState.Stuck) return "ELECTRODO PEGADO — SEPARAR HERRAMIENTA";
             if (Machine != null && Machine.ThermalTripped) return "PROTECCION TERMICA — ESPERAR ENFRIAMIENTO";
-            if (Torch.RemainingMm <= Torch.StubLengthMm + 10f) return "VARILLA CASI AGOTADA — CAMBIAR ELECTRODO";
+            bool rod = Machine != null && Machine.Current != null && !Machine.Current.WireFeed;
+            if (rod && Torch.RemainingMm <= Torch.StubLengthMm + 10f) return "VARILLA CASI AGOTADA — CAMBIAR ELECTRODO";
+            if (Course != null && Course.Stage == CourseStageV5.Teach && _recorder != null && _recorder.RecordingNow)
+            {
+                if (Course.Mode == CourseModeV5.Exam) return "● GRABANDO";
+                float ctwd = Torch.HasArcSurface ? Torch.ArcLenMm + Torch.RemainingMm : 99f;
+                float ideal = Machine != null && Machine.Current != null ? Machine.Current.ArcLenIdealMm + Torch.RemainingMm : 15f;
+                if (ctwd > ideal + 3f) return "● GRABANDO — ACERCÁ LA TORCHA";
+                if (ctwd < ideal - 3f) return "● GRABANDO — ALEJÁ LA TORCHA";
+                return "● GRABANDO";
+            }
             if (!Torch.HasArcSurface) return "";
 
             // En examen se conservan avisos de estado, sin pistas de calidad.
             if (Course != null && Course.Mode == CourseModeV5.Exam) return "";
 
-            if (Torch.SparkRequested && Torch.ArcLenMm >= Torch.MaxArcLenMm) return "ACERQUE EL ELECTRODO PARA CEBAR";
-            if (Torch.ArcLenMm < 1.2f) return "ARCO MUY CORTO";
+            if (Torch.SparkRequested && Torch.ArcLenMm >= Torch.MaxArcLenMm) return "ACERQUE LA TORCHA PARA CEBAR";
+            if (Torch.Arcing && Torch.ArcLenMm < 1.2f) return "TORCHA MUY CERCA";
             if (Machine != null && Machine.Current != null)
             {
                 float ideal = Machine.Current.ArcLenIdealMm;

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using FrankaVR.Teleop;
 using FrankaVR.V5;
@@ -75,6 +76,21 @@ namespace FrankaVR.Welding
         public float WeldTravelSpeed = 0.004f, WeldTravelFast = 0.007f, WeldTravelFine = 0.002f;
         public float WeldLateralSpeed = 0.003f;
         public float ArcAdjustSpeed = 0.002f, ArcLiftSpeed = 0.02f;
+        [Header("Ensenar y ejecutar")]
+        [Tooltip("El curso lo apaga mientras se ensena: el gatillo graba en vez de encender el arco.")]
+        public bool ArcEnabled = true;
+        /// Gatillo de la fuente activa (Espacio o boton del mando), sea para soldar o para grabar.
+        public bool TriggerHeld { get; private set; }
+        public bool Playing => _playStage >= 0;
+        public bool PlaybackArc => _playStage == 2;
+        public bool PlaybackDone { get; private set; }
+        public float PlaybackProgress => _playLen.Count > 1 ? Mathf.Clamp01(_playS / _playLen[_playLen.Count - 1]) : 0f;
+        readonly List<Vector3> _playPos = new List<Vector3>(), _playDir = new List<Vector3>();
+        readonly List<float> _playLen = new List<float>();
+        int _playStage = -1;
+        float _playS, _playSpeed, _playTime, _dwell;
+        [Tooltip("Arco quieto al arrancar y llenado de crater al terminar (s)")]
+        public float ArcDwellSec = 0.5f;
         public bool SeamLocked { get; private set; }
         public string SeamHelp { get; private set; } = "";
         public bool HasSeamAngles { get; private set; }
@@ -89,6 +105,8 @@ namespace FrankaVR.Welding
         bool _physicalInit;
         CourseTrainingManagerV5 _course;
         KeyboardTeleopInput _keyboard;
+        HandControllerInput _hand;
+        float _nextHandSearch, _analog;
         Renderer _logicalMarker;
         bool _logicalMarkerVisible;
         int _approachStage = -1;
@@ -152,6 +170,7 @@ namespace FrankaVR.Welding
             if (Machine == null && Torch != null) Machine = Torch.Machine;
             _course = FindObjectOfType<CourseTrainingManagerV5>();
             if (Ik != null) _arm = Ik.GetComponent<PandaArm>();
+            if (FindObjectOfType<RobotCollisionGuard>() == null) gameObject.AddComponent<RobotCollisionGuard>();
             _keyboard = InputSource is HybridTeleopInput hybrid ? hybrid.Keyboard : InputSource as KeyboardTeleopInput;
             if (Ik != null && Ik.target != null)
             {
@@ -224,6 +243,8 @@ namespace FrankaVR.Welding
             _init = true;
             _physicalInit = false;
             _approachStage = -1;
+            _playStage = -1;
+            PlaybackDone = false;
             UsedTrainingAssistance = false;
             AssistanceSuspended = false;
             AssistMessage = "";
@@ -264,12 +285,20 @@ namespace FrankaVR.Welding
                 cmd.Orientation = recommended;
                 cmd.ResetOrientation = false;
             }
-            if (keyboardMotion && Input.GetKeyDown(KeyCode.B))
+            if (_hand == null && Time.unscaledTime >= _nextHandSearch)
+            { _nextHandSearch = Time.unscaledTime + 1f; _hand = FindAnyObjectByType<HandControllerInput>(); }
+            bool approachKey = Input.GetKeyDown(KeyCode.B) | (_hand != null && _hand.ConsumeApproach());
+            bool retreatKey = Input.GetKeyDown(KeyCode.C) | (_hand != null && _hand.ConsumeRetreat());
+            if (keyboardMotion && !Playing && approachKey)
             {
                 if (Approaching) _approachStage = -1;
                 else BeginAssistedApproach();
             }
-            if (keyboardMotion && Input.GetKeyDown(KeyCode.C)) BeginSafeRetreat();
+            if (keyboardMotion && retreatKey)
+            {
+                if (Playing) { StopPlayback(); PlaybackDone = true; AssistMessage = "EJECUCIÓN ABORTADA"; }
+                BeginSafeRetreat();
+            }
             ApplyMotion(cmd, keyboardMotion, Time.deltaTime);
 
             if (Machine != null)
@@ -277,9 +306,12 @@ namespace FrankaVR.Welding
                 if (cmd.CycleElectrode) { Machine.CycleElectrode(); if (Torch) Torch.LoadNewElectrode(); }
                 if (cmd.AmperageStep != 0) Machine.StepAmperage(cmd.AmperageStep);
             }
+            // Ejecutando: el arco lo maneja el programa. Ensenando: el gatillo solo graba.
+            bool arc = Playing ? PlaybackArc : ArcEnabled && cmd.SparkHeld;
             if (Torch != null)
-                Torch.SetSparkRequested(cmd.SparkHeld && !Approaching && !Retracting && !MotionBlocked && (Task == null || Task.State == SessionState.Running));
-            if (cmd.ReplaceElectrode && Task != null) Task.ReplaceElectrode();
+                Torch.SetSparkRequested(arc && !Approaching && !Retracting && !MotionBlocked && (Task == null || Task.State == SessionState.Running));
+            bool wire = Machine != null && Machine.Current != null && Machine.Current.WireFeed;
+            if (cmd.ReplaceElectrode && Task != null && !wire && !Playing) Task.ReplaceElectrode();
             if (cmd.ToggleHelmet && Helmet != null) Helmet.ToggleHelmet();
 
             if (LogDiagnostics) Diagnostics();
@@ -290,6 +322,8 @@ namespace FrankaVR.Welding
         public void ApplyMotion(TeleopCommand cmd, bool keyboardMotion, float deltaTime)
         {
             float dt = Mathf.Clamp(deltaTime, 0f, 0.05f);
+            TriggerHeld = cmd.SparkHeld;
+            _analog = cmd.AnalogMagnitude;
             Vector3 axis = LimitTilt(cmd.ResetOrientation ? BaseApproach : cmd.Orientation * BaseApproach);
             bool physical = keyboardMotion && ControlPhysicalTip && Torch != null;
             if (_logicalMarker != null) _logicalMarker.enabled = !physical && _logicalMarkerVisible;
@@ -338,7 +372,9 @@ namespace FrankaVR.Welding
                 _physicalInit = true;
             }
             SeamLocked = false;
-            if (SeamLockWhileArcing && cmd.SparkHeld && !Approaching && !Retracting && Task != null &&
+            bool playing = PlaybackStep(actual, dt, ref axis);
+            if (playing) rate = Vector3.zero;
+            if (SeamLockWhileArcing && cmd.SparkHeld && !playing && !Approaching && !Retracting && Task != null &&
                 Task.State == SessionState.Running && NearestSeam(_physicalTarget, out Vector3 sp, out Vector3 sn, out Vector3 st) &&
                 Vector3.Distance(sp, _physicalTarget) < SeamLockRadius)
             {
@@ -383,8 +419,11 @@ namespace FrankaVR.Welding
             if (Approaching)
             {
                 _approachTime += dt;
+                // 0 subir, 1 trasladar a altura segura (sin cruzar la pieza), 2 bajar sobre el eje, 3 distancia de arco.
+                Vector3 above = _approachPoint + _approachHand * 0.08f;
                 Vector3 destination = _approachStage == 0 ? _approachLift :
-                    _approachPoint + _approachHand * (_approachStage == 1 ? 0.08f : DesiredArcGap);
+                    _approachStage == 1 ? new Vector3(above.x, _approachLift.y, above.z) :
+                    _approachStage == 2 ? above : _approachPoint + _approachHand * DesiredArcGap;
                 if (_approachStage > 0)
                 {
                     axis = LimitTilt(-_approachHand);
@@ -393,7 +432,7 @@ namespace FrankaVR.Welding
                 _physicalTarget = Vector3.MoveTowards(_physicalTarget, destination, ApproachSpeed * dt);
                 if (Vector3.Distance(actual, destination) < 0.005f)
                 {
-                    if (++_approachStage > 2) _approachStage = -1;
+                    if (++_approachStage > 3) _approachStage = -1;
                     _approachTime = 0f;
                 }
                 if (_approachTime > 12f)
@@ -411,7 +450,7 @@ namespace FrankaVR.Welding
                 _physicalTarget = actual + Vector3.ClampMagnitude(_physicalTarget - actual, MaximumManualLead);
                 _physicalTarget = SeamLocked ? SeamStep(_physicalTarget, dt) : _physicalTarget + rate * dt;
             }
-            if (AssistanceAvailable && !Approaching && !Retracting && cmd.SparkHeld && !Torch.Stuck &&
+            if (AssistanceAvailable && !playing && !Approaching && !Retracting && cmd.SparkHeld && !Torch.Stuck &&
                 NearestSeam(_physicalTarget, out Vector3 point, out Vector3 normal, out Vector3 tangent))
             {
                 Vector3 hand = -Torch.PointingDir;
@@ -439,10 +478,17 @@ namespace FrankaVR.Welding
                     UsedTrainingAssistance = true;
                 }
             }
-            _physicalTarget = GuardSurface(actual, _physicalTarget);
+            // Con la punta quieta (solo reorientar) no tocar el objetivo: el giro mueve la punta real un instante
+            // y la proteccion desplazaria para siempre el punto sostenido.
+            bool commanded = rate.sqrMagnitude > 0f || cmd.SparkHeld || Approaching || Retracting || playing;
+            if (commanded) _physicalTarget = GuardSurface(actual, _physicalTarget);
             _physicalSmooth = Vector3.SmoothDamp(_physicalSmooth, _physicalTarget, ref _physicalVelocity,
                 Mathf.Max(0.08f, PositionSmoothTime), Mathf.Infinity, dt);
-            _physicalSmooth = GuardSurface(actual, _physicalSmooth);
+            if (commanded) _physicalSmooth = GuardSurface(actual, _physicalSmooth);
+            // Al reorientar mucho (aproximacion, programa), pivotar sobre la punta y no sobre el TCP: si no,
+            // la punta barre la pieza. Con giros chicos se usa la geometria real, que deja la punta exacta.
+            float turn = Vector3.Angle(offset, axis);
+            if (turn > 6f) offset = Vector3.Slerp(offset, axis.normalized * offset.magnitude, Mathf.Clamp01((turn - 6f) / 10f));
             _smoothedPos = ClampWorkspace(_physicalSmooth - offset);
             _targetPos = _smoothedPos;
             _physicalSmooth = _smoothedPos + offset;
@@ -451,6 +497,85 @@ namespace FrankaVR.Welding
             if (_marker != null) _marker.position = _physicalSmooth;
             UpdateSeamTelemetry(actual, dt);
             CheckForStall(actual, rate, dt);
+        }
+
+        /// Ejecucion automatica de una trayectoria ensenada: acercarse 30 mm atras sobre el eje,
+        /// bajar al primer punto, recorrerla a velocidad constante con arco y retirarse.
+        public bool BeginPlayback(IList<Vector3> positions, IList<Vector3> directions, float speed)
+        {
+            if (positions == null || directions == null || positions.Count < 2 || positions.Count != directions.Count || Torch == null) return false;
+            _playPos.Clear(); _playDir.Clear(); _playLen.Clear();
+            float length = 0f;
+            for (int i = 0; i < positions.Count; i++)
+            {
+                if (i > 0) length += Vector3.Distance(positions[i - 1], positions[i]);
+                _playPos.Add(positions[i]); _playDir.Add(directions[i].normalized); _playLen.Add(length);
+            }
+            if (length < 0.005f) return false;
+            _approachStage = -1;
+            Retracting = MotionBlocked = false;
+            AssistMessage = "";
+            ResetPhysicalCommand(Torch.ArcOriginPosition);
+            _playSpeed = Mathf.Max(0.0005f, speed);
+            _playS = _playTime = _dwell = 0f;
+            _playStage = 0;
+            PlaybackDone = false;
+            return true;
+        }
+
+        public void StopPlayback()
+        {
+            if (!Playing) return;
+            _playStage = -1;
+            if (Torch != null) { Torch.SetSparkRequested(false); ResetPhysicalCommand(Torch.ArcOriginPosition); }
+        }
+
+        void SamplePath(float s, out Vector3 position, out Vector3 direction)
+        {
+            int i = 1;
+            while (i < _playLen.Count - 1 && _playLen[i] < s) i++;
+            float span = _playLen[i] - _playLen[i - 1];
+            float t = span > 1e-6f ? Mathf.Clamp01((s - _playLen[i - 1]) / span) : 1f;
+            position = Vector3.Lerp(_playPos[i - 1], _playPos[i], t);
+            direction = Vector3.Slerp(_playDir[i - 1], _playDir[i], t).normalized;
+        }
+
+        bool PlaybackStep(Vector3 actual, float dt, ref Vector3 axis)
+        {
+            if (!Playing) return false;
+            _playTime += dt;
+            float total = _playLen[_playLen.Count - 1];
+            SamplePath(_playStage >= 3 ? total : _playS, out Vector3 point, out Vector3 dir);
+            Vector3 destination;
+            if (_playStage == 0) destination = point - dir * 0.03f;
+            else if (_playStage == 1) destination = point;
+            else if (_playStage == 2)
+            {
+                // El programa avanza solo si el robot lo sigue; si se atrasa, espera.
+                // Arranque y crater: el arco queda quieto ArcDwellSec en cada extremo, como en un robot real.
+                _dwell += dt;
+                if (_dwell > ArcDwellSec && _playS < total && Vector3.Distance(actual, _physicalTarget) < 0.004f)
+                {
+                    _playS = Mathf.Min(total, _playS + _playSpeed * dt);
+                    _playTime = 0f; // el limite de 15 s cuenta solo mientras el robot no avanza
+                    if (_playS >= total) _dwell = 0f;
+                }
+                SamplePath(_playS, out point, out dir);
+                destination = point;
+            }
+            else destination = point - dir * 0.05f;
+            axis = LimitTilt(dir);
+            _physicalTarget = _playStage == 2 ? destination : Vector3.MoveTowards(_physicalTarget, destination, ApproachSpeed * dt);
+            bool arrived = Vector3.Distance(actual, destination) < 0.004f && (_playStage != 2 || (_playS >= total && _dwell > ArcDwellSec));
+            if (arrived) { _playStage++; _playTime = _dwell = 0f; }
+            if (_playTime > 15f) { AssistMessage = "EJECUCIÓN DETENIDA — el robot no alcanzó la trayectoria"; _playStage = 4; }
+            if (_playStage > 3)
+            {
+                _playStage = -1;
+                PlaybackDone = true;
+                if (_keyboard != null) _keyboard.SetOrientation(Quaternion.FromToRotation(BaseApproach.normalized, axis));
+            }
+            return true;
         }
 
         // Ejes horizontales de la vista: marco de las teclas y de la inclinacion.
@@ -480,7 +605,9 @@ namespace FrankaVR.Welding
             _seamRightAxis = travelOnForward ? b * Sign(Vector3.Dot(r, b)) : t * Sign(Vector3.Dot(r, t));
             bool fine = _keyboard != null && _keyboard.Fine, fast = _keyboard != null && _keyboard.Fast;
             Vector3 dir = _seamRightAxis * Step(keys.x) + _seamForwardAxis * Step(keys.z);
-            _seamTravel = Vector3.Dot(dir, t) * (fine ? WeldTravelFine : fast ? WeldTravelFast : WeldTravelSpeed);
+            // Palanca analogica: la velocidad de avance la decide el operario (hasta WeldTravelFast).
+            float travel = _analog > 0f ? WeldTravelFast * _analog : fine ? WeldTravelFine : fast ? WeldTravelFast : WeldTravelSpeed;
+            _seamTravel = Vector3.Dot(dir, t) * travel;
             _seamLateral = Vector3.Dot(dir, b) * WeldLateralSpeed * (fine ? 0.4f : 1f);
             // E sostenida levanta cada vez mas rapido: un toque ajusta el arco, mantener lo corta.
             _liftHeld = keys.y > 1e-5f ? _liftHeld + dt : 0f;
@@ -490,8 +617,8 @@ namespace FrankaVR.Welding
             if (advance != _lastAdvance || travelOnForward != _lastTravelOnForward)
             {
                 _lastAdvance = advance; _lastTravelOnForward = travelOnForward;
-                SeamHelp = "SOBRE LA COSTURA · " + advance + ": avanzar · " + (travelOnForward ? "A/D" : "W/S") +
-                    ": lateral · Q/E: arco · I/K/J/L: ángulos";
+                SeamHelp = advance + ": avanzar · " + (travelOnForward ? "A/D" : "W/S") +
+                    ": lateral · Q/E: distancia · I/K/J/L: ángulos";
             }
             return t * _seamTravel + b * _seamLateral + Torch.PointingDir * _seamFeed;
         }
@@ -596,6 +723,9 @@ namespace FrankaVR.Welding
         {
             if (!AssistanceAvailable || Torch == null || Torch.SparkRequested || Torch.Stuck ||
                 !NearestSeam(Torch.ArcOriginPosition, out _approachPoint, out Vector3 normal, out Vector3 tangent)) return false;
+            // Lejos de la junta: ir al comienzo de la costura, donde arranca la trayectoria.
+            if (Vector3.Distance(_approachPoint, Torch.ArcOriginPosition) > 0.03f)
+            { _approachPoint = Task.Seam.PointAt(0); normal = Task.Seam.NormalAt(0); tangent = Task.Seam.TangentAt(0); }
             _approachHand = RecommendedHand(normal, tangent);
             if (Vector3.Angle(-_approachHand, Vector3.down) > MaxTiltFromVertical) return false;
             _physicalTarget = _physicalSmooth = Torch.ArcOriginPosition;
@@ -608,7 +738,7 @@ namespace FrankaVR.Welding
             // alcance esta ~15 cm sobre la pieza y una subida fija de 80 mm podia no llegar nunca.
             Vector3 offset = Torch.ArcOriginPosition - Ik.endEffector.position;
             Vector3 lift = Torch.ArcOriginPosition;
-            lift.y = Mathf.Max(lift.y, _approachPoint.y + 0.08f);
+            lift.y = Mathf.Max(lift.y, _approachPoint.y + 0.13f); // por encima de la placa de la mensula (100 mm)
             _approachLift = ClampWorkspace(lift - offset) + offset;
             AssistMessage = "";
             _approachTime = 0f;
@@ -641,7 +771,7 @@ namespace FrankaVR.Welding
 
         public Vector3 GuardSurface(Vector3 origin, Vector3 destination)
         {
-            const float margin = 0.003f;
+            const float margin = 0.0015f; // arco MIG ideal 3 mm: dejar margen para acercarse de mas
             // Limitar solamente la componente que entra en una superficie proxima.
             // Se conserva el avance tangencial aun estando pegado al margen.
             int nearby = Physics.OverlapSphereNonAlloc(origin, 0.012f, _nearSurfaces, ~0, QueryTriggerInteraction.Ignore);

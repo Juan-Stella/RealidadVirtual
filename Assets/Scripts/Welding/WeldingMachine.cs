@@ -12,10 +12,10 @@ namespace FrankaVR.Welding
     public class WeldingMachine : MonoBehaviour
     {
         [Header("Regulacion")]
-        public float Amperage = 110f;
+        public float Amperage = 160f;
         public float AmpStep  = 5f;
         public float AmpMin   = 20f;
-        public float AmpMax   = 220f;
+        public float AmpMax   = 300f;
 
         [Header("Ciclo de trabajo")]
         [Tooltip("Corriente a la que el ciclo de trabajo nominal es valido.")]

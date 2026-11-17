@@ -17,6 +17,7 @@ namespace FrankaVR.Teleop
         [Header("Fuentes")]
         public KeyboardTeleopInput Keyboard;
         public BleGloveInput Glove;
+        public HandControllerInput Controller;
 
         [Header("Conmutacion automatica")]
         [Tooltip("Si hay paquetes recientes del IMU, el guante toma el control de movimiento/orientacion.")]
@@ -43,7 +44,14 @@ namespace FrankaVR.Teleop
 
             if (Keyboard == null) Keyboard = FindObjectOfType<KeyboardTeleopInput>();
             if (Glove == null) Glove = FindObjectOfType<BleGloveInput>();
+            if (Controller == null && Time.unscaledTime >= _nextControllerSearch)
+            {
+                _nextControllerSearch = Time.unscaledTime + 1f;
+                Controller = FindAnyObjectByType<HandControllerInput>();
+            }
         }
+
+        float _nextControllerSearch;
 
         public TeleopCommand Poll(Quaternion currentToolOrientation)
         {
@@ -66,6 +74,25 @@ namespace FrankaVR.Teleop
 
             GloveMotionActive = PreferGloveWhenFresh && gloveFresh;
             ActiveMotionSource = GloveMotionActive ? "Guante BLE" : "Teclado";
+
+            // Mando ESP32: entra por el mismo camino que el teclado (control de punta, guia
+            // de costura, B/C, ensenar/ejecutar). La palanca reemplaza a WASD/QE si se mueve.
+            if (!GloveMotionActive && Controller != null && Controller.Connected)
+            {
+                ActiveMotionSource = "Mando";
+                Vector3 stick = Controller.StickRate();
+                if (stick.sqrMagnitude > 0f)
+                {
+                    keyboardCmd.TranslationRate = stick * Controller.FullStickRate;
+                    keyboardCmd.AnalogMagnitude = Mathf.Clamp01(stick.magnitude);
+                }
+                keyboardCmd.SparkHeld |= Controller.Trigger;
+                if (Keyboard != null && Controller.TryOrientation(keyboardCmd.Orientation, out Quaternion q))
+                {
+                    keyboardCmd.Orientation = q;
+                    Keyboard.SetOrientation(q);
+                }
+            }
 
             // Movimiento/orientacion: una sola fuente a la vez.
             TeleopCommand result = GloveMotionActive ? gloveCmd : keyboardCmd;

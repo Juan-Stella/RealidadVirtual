@@ -8,7 +8,8 @@ namespace FrankaVR.Welding
         ButtJoint,   // junta a tope entre dos chapas
         FilletT,     // junta en T (filete), angulo de trabajo 45 grados
         LapJoint,    // solape de chapa fina
-        PipeButt     // junta circunferencial de caño
+        PipeButt,    // junta circunferencial de caño
+        BracketFillet // filete de la mensula con cartelas (SeamIndex elige la costura)
     }
 
     public enum SeamShape { Line, Circle }
@@ -29,6 +30,7 @@ namespace FrankaVR.Welding
         public float ThicknessMm = 6f;
         public float SeamLengthM = 0.20f; // largo de la costura (o circunferencia si es caño)
         public float PipeRadiusM = 0.06f; // solo para PipeButt
+        public int SeamIndex = 0;         // solo para BracketFillet
 
         [Header("Norma de angulos (grados)")]
         public float IdealTravelAngle = 12f; // arrastre tipico
@@ -38,13 +40,44 @@ namespace FrankaVR.Welding
         [Header("Regulacion recomendada")]
         public string RecommendedElectrode = "E6013 3.25";
         public float  RecommendedAmps = 110f;
+        [Tooltip("Velocidad de avance programada para la ejecucion automatica (mm/s).")]
+        public float  RecommendedSpeedMmS = 6f;
 
         [Header("Evaluacion")]
         public float MinScoreToPass = 70f;
         public float TimeLimitSec = 180f;
 
-        /// Los 5 ejercicios del simulador, en orden de dificultad creciente.
+        /// Trabajos actuales: las tres costuras de filete de una mensula con cartelas.
+        /// La normal de cada costura es la bisectriz de la esquina: angulo de trabajo ideal 0.
         public static WorkOrder[] Catalog => new[]
+        {
+            new WorkOrder{
+                Id="M1", Title="Filete cartela izquierda", Joint=JointType.BracketFillet, Shape=SeamShape.Line, SeamIndex=1,
+                Brief="Filete entre la cartela izquierda y la base, del lado de adentro. Se suelda desde la placa hacia la punta de la cartela, con la torcha inclinada hacia la cartela.",
+                ThicknessMm=8f, SeamLengthM=0.06f,
+                IdealTravelAngle=10f, IdealWorkAngle=0f, AngleToleranceDeg=10f,
+                RecommendedElectrode="ER70S-6 1.0 · Ar/CO2", RecommendedAmps=150f, RecommendedSpeedMmS=6f,
+                MinScoreToPass=70f, TimeLimitSec=0f },
+
+            new WorkOrder{
+                Id="M2", Title="Filete cartela derecha", Joint=JointType.BracketFillet, Shape=SeamShape.Line, SeamIndex=2,
+                Brief="Igual que la izquierda, en la otra cartela: la torcha se inclina hacia el lado contrario.",
+                ThicknessMm=8f, SeamLengthM=0.06f,
+                IdealTravelAngle=10f, IdealWorkAngle=0f, AngleToleranceDeg=10f,
+                RecommendedElectrode="ER70S-6 1.0 · Ar/CO2", RecommendedAmps=150f, RecommendedSpeedMmS=6f,
+                MinScoreToPass=70f, TimeLimitSec=0f },
+
+            new WorkOrder{
+                Id="M3", Title="Filete frontal placa-base", Joint=JointType.BracketFillet, Shape=SeamShape.Line, SeamIndex=0,
+                Brief="Avanzado: filete entre la base y la placa vertical, entre las dos cartelas. La torcha apunta hacia el robot; usar VISTA si el brazo tapa la junta.",
+                ThicknessMm=8f, SeamLengthM=0.10f,
+                IdealTravelAngle=10f, IdealWorkAngle=0f, AngleToleranceDeg=10f,
+                RecommendedElectrode="ER70S-6 1.0 · Ar/CO2", RecommendedAmps=160f, RecommendedSpeedMmS=6f,
+                MinScoreToPass=70f, TimeLimitSec=0f },
+        };
+
+        /// Ejercicios N1-N5 de la version con electrodo revestido, conservados como referencia.
+        public static WorkOrder[] LegacyCatalog => new[]
         {
             new WorkOrder{
                 Id="N1", Title="Cordon sobre chapa (plana)", Joint=JointType.BeadOnPlate, Shape=SeamShape.Line,
