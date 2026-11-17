@@ -11,6 +11,12 @@
 
 # Respaldo local y salidas reproducibles de verificacion
 /_Backups/
+/_ArchivoLocal/
+/_Backup_*/
+# Paquetes historicos de instalacion: no forman parte del proyecto activo
+/FrankaVR_Software_Final_v*/
+/FrankaVR_v4*/
+/FrankaVR_V6_*/
 /_VerificacionMejoras/
 /Verificacion/*.log
 /Verificacion/**/*.log
@@ -39,6 +45,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user

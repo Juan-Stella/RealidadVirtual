@@ -1,5 +1,7 @@
 # FrankaVR — actualización y traspaso a otra IA
 
+> **Actualización posterior:** este traspaso fue redactado antes del trabajo de Claude incorporado en `52fcd48`. Para el estado actual, leer primero `CONTROL_Y_PORTAELECTRODO_20261117.md` y `README.md`: hay correcciones de porta-electrodo, control, HUD y entorno, y pruebas de Editor posteriores aprobadas. Las advertencias sobre tareas incompletas de abajo describen el estado anterior.
+
 **Fecha de este documento: 17 de noviembre de 2026.**
 
 Este archivo está pensado para adjuntarlo completo a otra IA, aunque ya haya trabajado antes en FrankaVR. Es una actualización del proyecto desarrollado principalmente con Codex, con antecedentes, estado actual, problemas y próximos pasos.
