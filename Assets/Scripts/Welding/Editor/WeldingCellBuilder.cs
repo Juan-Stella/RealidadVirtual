@@ -89,6 +89,73 @@ namespace FrankaVR.EditorTools
             // Biombo de soldadura: elemento reconocible de taller.
             Prim(PrimitiveType.Cube, "Biombo", env.transform,
                  new Vector3(0f, 1.0f, 1.6f), new Vector3(2.4f, 2.0f, 0.05f), Col(0.45f, 0.16f, 0.14f));
+
+            BuildProps(env.transform);
+        }
+
+        /// Props del taller. Solo primitivas: llenan el espacio y dan escala, sin tocar
+        /// ningun sistema funcional. Un cubo vacio se lee como maqueta; con objetos
+        /// alrededor se lee como lugar de trabajo.
+        static void BuildProps(Transform parent)
+        {
+            GameObject props = GetOrCreate("Props", parent);
+
+            Color wood  = Col(0.42f, 0.30f, 0.18f);
+            Color drum  = Col(0.20f, 0.34f, 0.46f);
+            Color metal = Col(0.38f, 0.39f, 0.42f);
+            Color rust  = Col(0.45f, 0.26f, 0.14f);
+
+            // Tambores contra la pared del fondo.
+            for (int i = 0; i < 3; i++)
+                Prim(PrimitiveType.Cylinder, "Tambor" + i, props.transform,
+                     new Vector3(-2.6f + i * 0.62f, 0.44f, 3.4f),
+                     new Vector3(0.56f, 0.44f, 0.56f), i == 1 ? rust : drum);
+
+            // Cajones apilados.
+            Prim(PrimitiveType.Cube, "Cajon0", props.transform,
+                 new Vector3(2.6f, 0.25f, 3.2f), new Vector3(0.6f, 0.5f, 0.6f), wood);
+            Prim(PrimitiveType.Cube, "Cajon1", props.transform,
+                 new Vector3(2.6f, 0.72f, 3.2f), new Vector3(0.5f, 0.44f, 0.5f), wood);
+            Prim(PrimitiveType.Cube, "Cajon2", props.transform,
+                 new Vector3(3.2f, 0.22f, 2.7f), new Vector3(0.55f, 0.44f, 0.55f), wood);
+
+            // Estanteria simple a la izquierda.
+            GameObject shelf = GetOrCreate("Estanteria", props.transform);
+            for (int i = 0; i < 3; i++)
+                Prim(PrimitiveType.Cube, "Balda" + i, shelf.transform,
+                     new Vector3(-3.6f, 0.45f + i * 0.50f, 1.2f),
+                     new Vector3(0.45f, 0.04f, 1.6f), metal);
+            for (int i = 0; i < 4; i++)
+                Prim(PrimitiveType.Cube, "Montante" + i, shelf.transform,
+                     new Vector3(-3.6f + (i % 2 == 0 ? -0.20f : 0.20f),
+                                 0.75f,
+                                 1.2f + (i < 2 ? -0.75f : 0.75f)),
+                     new Vector3(0.05f, 1.5f, 0.05f), metal);
+
+            // Mesa auxiliar con herramientas de soldador.
+            GameObject tools = GetOrCreate("MesaHerramientas", props.transform);
+            Prim(PrimitiveType.Cube, "Tapa", tools.transform,
+                 new Vector3(-1.5f, 0.80f, -0.4f), new Vector3(0.7f, 0.04f, 0.5f), metal);
+            for (int i = 0; i < 4; i++)
+                Prim(PrimitiveType.Cube, "Pata" + i, tools.transform,
+                     new Vector3(-1.5f + (i % 2 == 0 ? -0.30f : 0.30f), 0.40f,
+                                 -0.4f + (i < 2 ? -0.20f : 0.20f)),
+                     new Vector3(0.04f, 0.80f, 0.04f), metal);
+            // Martillo de escoria, cepillo de alambre y un tubo de electrodos.
+            Prim(PrimitiveType.Cube, "MartilloEscoria", tools.transform,
+                 new Vector3(-1.68f, 0.84f, -0.50f), new Vector3(0.22f, 0.02f, 0.03f), Col(0.5f,0.5f,0.52f));
+            Prim(PrimitiveType.Cube, "CepilloAlambre", tools.transform,
+                 new Vector3(-1.45f, 0.84f, -0.52f), new Vector3(0.18f, 0.03f, 0.05f), wood);
+            Prim(PrimitiveType.Cylinder, "TuboElectrodos", tools.transform,
+                 new Vector3(-1.32f, 0.86f, -0.30f), new Vector3(0.07f, 0.20f, 0.07f), Col(0.75f,0.62f,0.20f));
+
+            // Cartel de seguridad en la pared del fondo.
+            Prim(PrimitiveType.Cube, "CartelSeguridad", props.transform,
+                 new Vector3(1.2f, 1.9f, 3.93f), new Vector3(0.7f, 0.5f, 0.02f), Col(0.85f, 0.72f, 0.12f));
+
+            // Careta de repuesto colgada.
+            Prim(PrimitiveType.Cube, "CaretaRepuesto", props.transform,
+                 new Vector3(-3.9f, 1.5f, -0.6f), new Vector3(0.04f, 0.32f, 0.26f), Col(0.15f, 0.15f, 0.16f));
         }
 
         static void MakeWall(Transform p, string name, Vector3 pos, Vector3 scale)
@@ -185,12 +252,58 @@ namespace FrankaVR.EditorTools
 
                 case JointType.PipeButt:
                     float r = wo.PipeRadiusM;
+                    Color flangeCol = Col(0.36f, 0.37f, 0.40f);
+                    Color boltCol   = Col(0.62f, 0.62f, 0.64f);
+
+                    // Dos tramos de cano enfrentados, con una junta en el medio (x = 0).
                     Prim(PrimitiveType.Cylinder, "CanoIzq", piece.transform,
-                         new Vector3(-0.09f, r, 0f), new Vector3(r * 2f, 0.08f, r * 2f), steel)
+                         new Vector3(-0.09f, r, 0f), new Vector3(r * 2f, 0.085f, r * 2f), steel)
                         .transform.localEulerAngles = new Vector3(0f, 0f, 90f);
                     Prim(PrimitiveType.Cylinder, "CanoDer", piece.transform,
-                         new Vector3(+0.09f, r, 0f), new Vector3(r * 2f, 0.08f, r * 2f), steel)
+                         new Vector3(+0.09f, r, 0f), new Vector3(r * 2f, 0.085f, r * 2f), steel)
                         .transform.localEulerAngles = new Vector3(0f, 0f, 90f);
+
+                    // Chaflan de preparacion en la junta: el bisel donde se deposita el cordon.
+                    Prim(PrimitiveType.Cylinder, "PreparacionJunta", piece.transform,
+                         new Vector3(0f, r, 0f), new Vector3(r * 1.94f, 0.004f, r * 1.94f),
+                         Col(0.30f, 0.31f, 0.33f))
+                        .transform.localEulerAngles = new Vector3(0f, 0f, 90f);
+
+                    // Bridas en los extremos libres, con su circulo de bulones.
+                    for (int f = 0; f < 2; f++)
+                    {
+                        float fx = (f == 0) ? -0.175f : 0.175f;
+                        Prim(PrimitiveType.Cylinder, "Brida" + f, piece.transform,
+                             new Vector3(fx, r, 0f), new Vector3(r * 3.2f, 0.010f, r * 3.2f), flangeCol)
+                            .transform.localEulerAngles = new Vector3(0f, 0f, 90f);
+
+                        for (int bolt = 0; bolt < 8; bolt++)
+                        {
+                            float ang = bolt / 8f * 2f * Mathf.PI;
+                            Prim(PrimitiveType.Cylinder, "Bulon" + f + "_" + bolt, piece.transform,
+                                 new Vector3(fx, r + Mathf.Cos(ang) * r * 1.3f, Mathf.Sin(ang) * r * 1.3f),
+                                 new Vector3(0.012f, 0.014f, 0.012f), boltCol)
+                                .transform.localEulerAngles = new Vector3(0f, 0f, 90f);
+                        }
+                    }
+
+                    // Soportes en V que apoyan el cano sobre la mesa.
+                    for (int sIdx = 0; sIdx < 2; sIdx++)
+                    {
+                        float sx = (sIdx == 0) ? -0.13f : 0.13f;
+                        Prim(PrimitiveType.Cube, "SoporteBase" + sIdx, piece.transform,
+                             new Vector3(sx, r * 0.28f, 0f),
+                             new Vector3(0.035f, r * 0.56f, r * 2.4f), Col(0.28f, 0.29f, 0.31f));
+                        Prim(PrimitiveType.Cube, "SoporteV_A" + sIdx, piece.transform,
+                             new Vector3(sx, r * 0.72f, -r * 0.62f),
+                             new Vector3(0.030f, r * 0.95f, 0.014f), Col(0.33f, 0.34f, 0.36f))
+                            .transform.localEulerAngles = new Vector3(35f, 0f, 0f);
+                        Prim(PrimitiveType.Cube, "SoporteV_B" + sIdx, piece.transform,
+                             new Vector3(sx, r * 0.72f, r * 0.62f),
+                             new Vector3(0.030f, r * 0.95f, 0.014f), Col(0.33f, 0.34f, 0.36f))
+                            .transform.localEulerAngles = new Vector3(-35f, 0f, 0f);
+                    }
+
                     GameObject center = MakeChild("CentroCano", seamGo.transform);
                     center.transform.position = piece.transform.position + new Vector3(0f, r, 0f);
                     seam.CircleCenter = center.transform;
@@ -220,25 +333,63 @@ namespace FrankaVR.EditorTools
             GameObject torchGo = GetOrCreate("Soldador", flange);
             torchGo.transform.localPosition = Vector3.zero;
 
-            // Cuerpo del porta-electrodo.
-            Prim(PrimitiveType.Cylinder, "Cuerpo", torchGo.transform,
-                 new Vector3(0f, -0.06f, 0f), new Vector3(0.028f, 0.06f, 0.028f), Col(0.12f, 0.12f, 0.14f));
-            Prim(PrimitiveType.Cube, "Mordaza", torchGo.transform,
-                 new Vector3(0f, -0.125f, 0f), new Vector3(0.022f, 0.03f, 0.022f), Col(0.65f, 0.45f, 0.15f));
+            // --- Porta-electrodos (pinza portaelectrodo, herramienta correcta para SMAW) ---
+            // Construido con primitivas para no depender de assets externos ni licencias.
+            Color bakelite = Col(0.10f, 0.10f, 0.12f);   // mango aislante
+            Color brass    = Col(0.62f, 0.45f, 0.16f);   // mordazas de bronce
+            Color steel    = Col(0.55f, 0.56f, 0.58f);
 
-            // Varilla del electrodo: se escala en Y a medida que se consume.
+            // +Y de Soldador sale del flange hacia la pieza. Mordazas en la cara del flange,
+            // mango y entrada de cable hacia la muneca, electrodo de 350 mm hacia afuera.
+            // Mango con nervaduras de agarre.
+            Prim(PrimitiveType.Cylinder, "Mango", torchGo.transform,
+                 new Vector3(0f, -0.089f, 0f), new Vector3(0.026f, 0.065f, 0.026f), bakelite);
+            for (int i = 0; i < 4; i++)
+                Prim(PrimitiveType.Cylinder, "Nervadura" + i, torchGo.transform,
+                     new Vector3(0f, -0.119f + i * 0.020f, 0f),
+                     new Vector3(0.030f, 0.004f, 0.030f), Col(0.16f, 0.16f, 0.18f));
+
+            // Boquilla de entrada del cable, en la culata del mango.
+            Prim(PrimitiveType.Cylinder, "BocaCable", torchGo.transform,
+                 new Vector3(0f, -0.162f, 0f), new Vector3(0.018f, 0.014f, 0.018f), steel);
+            GameObject cablePort = MakeChild("TomaCable", torchGo.transform);
+            cablePort.transform.localPosition = new Vector3(0f, -0.176f, 0f);
+
+            // Cabezal: cuello y las dos mordazas que muerden el electrodo.
+            Prim(PrimitiveType.Cylinder, "Cuello", torchGo.transform,
+                 new Vector3(0f, -0.014f, 0f), new Vector3(0.020f, 0.015f, 0.020f), steel);
+            Prim(PrimitiveType.Cube, "MordazaFija", torchGo.transform,
+                 new Vector3(0f, 0.012f, 0.007f), new Vector3(0.024f, 0.030f, 0.009f), brass);
+            Prim(PrimitiveType.Cube, "MordazaMovil", torchGo.transform,
+                 new Vector3(0f, 0.012f, -0.007f), new Vector3(0.024f, 0.026f, 0.008f), brass);
+
+            // Palanca y resorte de apriete.
+            Prim(PrimitiveType.Cube, "Palanca", torchGo.transform,
+                 new Vector3(0f, -0.034f, -0.018f), new Vector3(0.016f, 0.045f, 0.006f), bakelite);
+            Prim(PrimitiveType.Cylinder, "Resorte", torchGo.transform,
+                 new Vector3(0f, -0.009f, -0.016f), new Vector3(0.007f, 0.012f, 0.007f), steel);
+
+            // Varilla original (la reemplaza RuntimeElectrodeRod, que se consume).
             GameObject rod = Prim(PrimitiveType.Cylinder, "Electrodo", torchGo.transform,
-                                  new Vector3(0f, -0.23f, 0f), new Vector3(0.0035f, 0.09f, 0.0035f),
-                                  Col(0.85f, 0.83f, 0.75f));
+                                  new Vector3(0f, 0.091f, 0f), new Vector3(0.0035f, 0.075f, 0.0035f),
+                                  Col(0.80f, 0.78f, 0.70f));
+
+            // Dos puntos SOBRE EL EJE DEL ELECTRODO. El PandaIK deduce el eje de herramienta
+            // como la direccion toolReference -> endEffector, asi que ambos tienen que estar
+            // sobre la varilla. Si se usa la brida como referencia, el vector medido mezcla
+            // el offset de montaje con la direccion del electrodo y el IK alinea un eje
+            // equivocado: el soplete queda acostado aunque el error de orientacion de casi 0.
+            GameObject toolBase = MakeChild("ToolBase", torchGo.transform);
+            toolBase.transform.localPosition = new Vector3(0f, -0.10f, 0f);
 
             GameObject tip = MakeChild("Tip", torchGo.transform);
-            tip.transform.localPosition = new Vector3(0f, -0.32f, 0f);
+            tip.transform.localPosition = new Vector3(0f, 0.002f, 0f); // nacimiento de la varilla
 
             WeldingTorch torch = torchGo.GetComponent<WeldingTorch>();
             if (torch == null) torch = torchGo.AddComponent<WeldingTorch>();
             torch.Tip = tip.transform;
             torch.ElectrodeVisual = rod.transform;
-            torch.ElectrodeAxisLocal = Vector3.down;
+            torch.ElectrodeAxisLocal = Vector3.up;
             torch.Machine = Object.FindObjectOfType<WeldingMachine>();
 
             // Efectos del arco.
@@ -262,8 +413,20 @@ namespace FrankaVR.EditorTools
             src.loop = true; src.playOnAwake = false; src.spatialBlend = 1f;
             fx.ArcAudio = src;
 
-            Debug.Log("Soldador montado. IMPORTANTE: en PandaIK poner endEffector = " +
-                      "Soldador/Tip, y en WeldingTorch asignar WorkpieceMask = capa 'Workpiece'.");
+            // Cable de soldadura: cuelga de la maquina hasta la culata del porta-electrodos.
+            GameObject cableGo = GetOrCreate("CableSoldadura", torchGo.transform);
+            LineRenderer lr = cableGo.GetComponent<LineRenderer>();
+            if (lr == null) lr = cableGo.AddComponent<LineRenderer>();
+            WeldingCable cable = cableGo.GetComponent<WeldingCable>();
+            if (cable == null) cable = cableGo.AddComponent<WeldingCable>();
+            cable.ToTorch = cablePort.transform;
+            GameObject machineObj = GameObject.Find("PortaElectrodos");
+            if (machineObj != null) cable.FromMachine = machineObj.transform;
+
+            Debug.Log("Soldador montado. En PandaIK: endEffector = Soldador/Tip y " +
+                      "toolReference = Soldador/ToolBase (NO la brida: ambos deben estar sobre " +
+                      "el eje del electrodo). En WeldingTorch: WorkpieceMask = capa 'Workpiece'. " +
+                      "Si el cable no aparece, asignar 'From Machine' en WeldingCable.");
         }
 
         static void BuildHelmet(Transform cam)

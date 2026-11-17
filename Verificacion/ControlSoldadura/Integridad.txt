@@ -1,0 +1,16 @@
+Cambios:
+Assets\Editor\FrankaVRProjectChecks.cs
+Assets\Scripts\Welding\KeyboardTeleopInput.cs
+Assets\Scripts\Welding\WeldingSessionReport.cs
+Assets\Scripts\Welding\WeldingTeleopController.cs
+Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
+Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
+Metas previos: 169
+Metas preservados: True
+Assets/Main.unity: True
+Assets/Scripts/PandaIK.cs: True
+Assets/Scripts/PandaArm.cs: True
+Assets/Scripts/Welding/WeldingTaskManager.cs: True
+Assets/Scripts/Welding/WeldingTorch.cs: True
+Packages/manifest.json: True
+GUID duplicados: []

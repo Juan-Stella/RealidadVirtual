@@ -9,6 +9,19 @@
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 
+# Respaldo local y salidas reproducibles de verificacion
+/_Backups/
+/_VerificacionMejoras/
+/Verificacion/*.log
+/Verificacion/**/*.log
+/Verificacion/Capturas/
+/Verificacion/Resultados_prueba/
+
+# Intermedios de build Android y recuperacion automatica de escenas de Unity
+/.utmp/
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+
 # Capturas de memoria y grabaciones (pesan mucho)
 /[Mm]emoryCaptures/
 /[Rr]ecordings/

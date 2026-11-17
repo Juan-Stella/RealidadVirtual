@@ -14,6 +14,7 @@ namespace FrankaVR.Teleop
         public bool       CycleElectrode;  // cambiar de electrodo en la maquina (flanco)
         public bool       ReplaceElectrode;// reponer varilla consumida (flanco)
         public bool       ToggleHelmet;    // subir/bajar la careta (flanco)
+        public bool       ResetOrientation;// devolver el electrodo a la vertical (flanco)
         public bool       MoveClutch;      // si false, no se aplica traslacion (evita deriva)
 
         public static TeleopCommand Neutral => new TeleopCommand
@@ -25,6 +26,7 @@ namespace FrankaVR.Teleop
             CycleElectrode = false,
             ReplaceElectrode = false,
             ToggleHelmet = false,
+            ResetOrientation = false,
             MoveClutch = false
         };
     }

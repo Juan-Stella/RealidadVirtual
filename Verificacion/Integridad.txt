@@ -1,0 +1,21 @@
+PASS
+166 metas previos identicos.
+IK, robot, torch, tarea, costura, modelo, versiones, paquetes y PlayerSettings identicos al respaldo.
+Sin tipos/GUID duplicados en Assets.
+Cambios respecto al respaldo:
+Assets\Main.unity
+Assets\Editor\FrankaVRProjectChecks.cs
+Assets\Editor\FrankaVRProjectChecks.cs.meta
+Assets\Input\GlovePacketBridge.cs
+Assets\VR\ViewpointManager.cs
+Assets\Scripts\Welding\PipeTrainingWorkpiece.cs
+Assets\Scripts\Welding\WeldBeadRenderer.cs
+Assets\Scripts\Welding\WeldingEnvironmentPolish.cs
+Assets\Scripts\Welding\WeldingTeleopController.cs
+Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
+Assets\FrankaVR\V6\VR\DesktopNavigatorV6.cs
+Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
+Assets\FrankaVR\V5\Course\CourseTrainingManagerV5.cs
+Assets\FrankaVR\V5\Course\TrainingWorkpieceFactoryV5.cs
+Assets\FrankaVR\V5\Editor\GloveEmulatorWindowV5.cs
+ProjectSettings\EditorBuildSettings.asset

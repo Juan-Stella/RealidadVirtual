@@ -37,11 +37,13 @@ public class GazeInteractor : MonoBehaviour
 
     [Tooltip("Alcance del rayo, en metros.")]
     public float maxDistance = 12f;
+    public LayerMask InteractionMask = ~0;
 
     public GazeButton Current { get; private set; }
     public float Progress { get; private set; }   // 0..1
 
     Transform ring;
+    Transform dot;
     Material dotMat, ringMat;
     float held;
 
@@ -58,7 +60,7 @@ public class GazeInteractor : MonoBehaviour
     {
         if (playerCamera == null) return;
 
-        MakeQuad("GazeDot", reticleRadius * 2f, out dotMat);
+        dot = MakeQuad("GazeDot", reticleRadius * 2f, out dotMat);
         ring = MakeQuad("GazeRing", reticleRadius * 5f, out ringMat);
         if (ring != null) ring.localScale = Vector3.zero;
     }
@@ -71,6 +73,7 @@ public class GazeInteractor : MonoBehaviour
 
         var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
         go.name = name;
+        go.GetComponent<Collider>().enabled = false;
         Destroy(go.GetComponent<Collider>());   // el puntero no debe chocar con nada
 
         var t = go.transform;
@@ -90,8 +93,9 @@ public class GazeInteractor : MonoBehaviour
 
         var cam = playerCamera.transform;
         GazeButton hit = null;
-
-        if (Physics.Raycast(cam.position, cam.forward, out RaycastHit info, maxDistance))
+        bool mobile = Application.platform == RuntimePlatform.Android;
+        Ray ray = mobile ? new Ray(cam.position, cam.forward) : playerCamera.ScreenPointToRay(Input.mousePosition);
+        if (Physics.Raycast(ray, out RaycastHit info, maxDistance, InteractionMask, QueryTriggerInteraction.Collide))
             hit = info.collider.GetComponentInParent<GazeButton>();
 
         if (hit != Current)
@@ -104,10 +108,13 @@ public class GazeInteractor : MonoBehaviour
 
         if (Current != null && Current.isActiveAndEnabled)
         {
-            held += Time.deltaTime;
+            held += mobile ? Time.deltaTime : 0f;
             Progress = Mathf.Clamp01(held / Mathf.Max(0.05f, dwellSeconds));
-
-            if (Progress >= 1f)
+            bool confirm = !mobile && Input.GetMouseButtonDown(0);
+#if UNITY_ANDROID && !UNITY_EDITOR
+            confirm |= Google.XR.Cardboard.Api.IsTriggerPressed;
+#endif
+            if (Progress >= 1f || confirm)
             {
                 Current.Activate();
                 held = 0f;
@@ -115,8 +122,24 @@ public class GazeInteractor : MonoBehaviour
             }
         }
         else Progress = 0f;
+        if (dot != null) dot.gameObject.SetActive(mobile);
+        if (ring != null) ring.gameObject.SetActive(mobile);
 
         Paint();
+    }
+
+    void OnDestroy()
+    {
+        if (dot != null) SafeDestroy(dot.gameObject);
+        if (ring != null) SafeDestroy(ring.gameObject);
+        if (dotMat != null) SafeDestroy(dotMat);
+        if (ringMat != null) SafeDestroy(ringMat);
+    }
+
+    static void SafeDestroy(Object value)
+    {
+        if (Application.isPlaying) Destroy(value);
+        else DestroyImmediate(value);
     }
 
     void Paint()

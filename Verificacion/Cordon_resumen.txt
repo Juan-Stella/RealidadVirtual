@@ -1,0 +1,3 @@
+buenos=58/60 frios=2 perforacion=0 socavado=0 porosidad=0 sin_soldar=0 arco=100% costura=100% llegada_mm=204
+contactos al trabarse:
+(no se trabo)

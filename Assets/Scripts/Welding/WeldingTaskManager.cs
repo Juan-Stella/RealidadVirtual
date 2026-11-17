@@ -107,11 +107,11 @@ namespace FrankaVR.Welding
             _prevStuck  = Torch.Stuck;
 
             // Deposicion en la costura.
-            if (arcing && Seam != null && Torch.Tip != null)
+            if (arcing && Seam != null)
             {
                 float watts = Torch.CurrentPowerWatts();
                 if (watts > 0f)
-                    Seam.Deposit(Torch.Tip.position, Torch.ElectrodeDir, watts, Torch.ArcQuality, dt);
+                    Seam.Deposit(Torch.ArcOriginPosition, Torch.ElectrodeDir, watts, Torch.ArcQuality, dt);
             }
 
             if (Order != null && Order.TimeLimitSec > 0f && Elapsed >= Order.TimeLimitSec)

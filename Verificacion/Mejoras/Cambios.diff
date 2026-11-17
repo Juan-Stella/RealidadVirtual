@@ -1,0 +1,1402 @@
+--- Antes/Assets\Resources.meta
+
++++ Assets\Resources.meta
+
+@@ -0,0 +1,8 @@
+
++fileFormatVersion: 2
++guid: 66e0b4aac15cd14439f276e100145624
++folderAsset: yes
++DefaultImporter:
++  externalObjects: {}
++  userData: 
++  assetBundleName: 
++  assetBundleVariant: 
+--- Antes/Assets\Editor\FrankaVRProjectChecks.cs
+
++++ Assets\Editor\FrankaVRProjectChecks.cs
+
+@@ -53,7 +53,7 @@
+
+ 
+     static void Subscribe()
+     {
+-        _deadline = EditorApplication.timeSinceStartup + 180;
++        _deadline = EditorApplication.timeSinceStartup + 300;
+         EditorApplication.update -= Tick;
+         EditorApplication.update += Tick;
+         Application.logMessageReceived -= OnLog;
+@@ -122,12 +122,36 @@
+
+         var hybrid = One<HybridTeleopInput>();
+         var bridge = One<GlovePacketBridge>();
+         var factory = One<TrainingWorkpieceFactoryV5>();
++        course.ResultsDirectoryOverride = "Verificacion/Resultados_prueba";
+         Require(course.Phase == CoursePhaseV5.Selection && task.State == FrankaVR.Welding.SessionState.Briefing,
+             "La sesion arranco sin seleccionar modo");
+         Require(!hybrid.GloveMotionActive, "El guante toma control sin paquetes");
+         Require(GameObject.Find("VRTrainingHUDV6_Runtime") != null && GameObject.Find("CourseWorldMenuV6_Runtime") != null, "UI no construida");
+         CheckPanels();
+         Capture("01_seleccion");
++        One<GazeInteractor>();
++        GazeButton selector = null;
++        foreach (GazeButton button in UnityEngine.Object.FindObjectsByType<GazeButton>())
++            if (button.label == "N2 · TOPE") selector = button;
++        Require(selector != null && selector.GetComponent<Collider>().isTrigger, "Seleccion por puntero no preparada");
++        Physics.SyncTransforms();
++        Require(Physics.Raycast(Camera.main.transform.position, (selector.transform.position - Camera.main.transform.position).normalized,
++            out RaycastHit uiHit, 5f, 1 << 5, QueryTriggerInteraction.Collide) && uiHit.collider.GetComponent<GazeButton>() == selector,
++            "El puntero no alcanza el boton de ejercicio");
++        selector.Activate();
++        Require(course.SelectedExercise == 1 && course.Phase == CoursePhaseV5.Briefing, "Boton no selecciona N2");
++        course.BackToMenu(); course.SelectExercise(0); course.BackToMenu();
++        var navigator = One<DesktopNavigatorV6>();
++        float originalFov = Camera.main.fieldOfView;
++        Vector3 rigPosition = navigator.RigRoot.position;
++        navigator.ZoomBy(100f);
++        Require(Mathf.Approximately(Camera.main.fieldOfView, navigator.MinFieldOfView), "Zoom no respeta limite");
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(navigator.RigRoot.position == rigPosition, "Zoom movio el cuerpo");
++        CheckPanels();
++        Capture("05_zoom");
++        navigator.ResetZoom();
++        Require(Mathf.Approximately(Camera.main.fieldOfView, originalFov), "Zoom no vuelve al valor inicial");
+         bridge.OnBleMessage("IMU,NaN,0,0,0,1");
+         bridge.OnBleMessage("IMU,0,0,0,0,1");
+         Require(!hybrid.Glove.HasImuPacket, "Un paquete invalido tomo el control");
+@@ -182,6 +206,21 @@
+
+         }
+         Capture("02_instrucciones_N5");
+ 
++        course.StartTraining();
++        var before = task.Seam.Get(0);
++        task.Seam.Deposit(before.Pos, before.Normal, 2000f, 1f, 0.1f);
++        float deposited = task.Seam.Get(0).Energy;
++        Require(course.IndexPipe(180f), "N5 no permite giro durante practica");
++        Require(Mathf.Approximately(task.Seam.Get(0).Energy, deposited), "El giro borra la energia depositada");
++        Require(Vector3.Distance(task.Seam.PointAt(0), before.Pos) > 0.10f, "El giro no transforma la costura");
++        torch.SetSparkRequested(true);
++        Require(!course.IndexPipe(15f), "La pieza gira con chispa solicitada");
++        torch.SetSparkRequested(false);
++        course.FinishExercise();
++        course.StartExam();
++        Require(!course.IndexPipe(15f), "El caño gira en examen fijo");
++        course.FinishExercise();
++
+         course.SelectExercise(0);
+         Require(task.Seam.Count == factory.LineSamples, "N1 hereda la densidad de muestras de N5");
+         course.StartExam();
+@@ -195,6 +234,21 @@
+
+         course.StartTraining();
+         for (int i = 0; i < 3; i++) yield return null;
+         Require(task.State == FrankaVR.Welding.SessionState.Running && GameObject.Find("SeamPathGuide").GetComponent<LineRenderer>().enabled, "La practica no muestra su guia");
++        var hud = One<VRTrainingHUDV6>();
++        hud.ShowHelpDuringRunning = true;
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(GameObject.Find("CourseWorldMenuV6_Runtime") != null, "La ayuda no aparece durante practica");
++        CheckPanels();
++        Capture("06_ayuda");
++        hud.ShowHelpDuringRunning = false;
++
++        IEnumerator reachAudit = AuditReach(course, task, teleop, torch);
++        while (reachAudit.MoveNext()) yield return reachAudit.Current;
++        Require(Mathf.Approximately(teleop.Ik.toleranceMeters, 0.005f) && Mathf.Approximately(teleop.Ik.toleranceDegrees, 3f),
++            "Precision no restaura las tolerancias de la escena");
++        course.BackToMenu();
++        course.SelectExercise(0);
++        course.StartTraining();
+ 
+         // Colocacion controlada para probar arco/deposicion; no valida alcance del IK.
+         teleop.enabled = false;
+@@ -222,6 +276,113 @@
+
+         Require(task.State == FrankaVR.Welding.SessionState.Finished && !torch.SparkRequested, "Finalizacion incorrecta");
+         CheckPanels();
+         Capture("04_resultados");
++        Require(File.Exists(course.LastResultPath) && File.Exists(Path.ChangeExtension(course.LastResultPath, ".csv")), "No se exportaron JSON/CSV");
++        var saved = JsonUtility.FromJson<WeldingSessionReport.Result>(File.ReadAllText(course.LastResultPath));
++        Require(saved.exercise == "N1" && Mathf.Approximately(saved.score, task.FinalScore), "Resultado exportado no coincide con la sesion");
++    }
++
++    static IEnumerator AuditReach(CourseTrainingManagerV5 course, WeldingTaskManager task,
++        WeldingTeleopController teleop, WeldingTorch torch)
++    {
++        // Robot real y solver existente. No se desconecta ni reposiciona la herramienta.
++        bool enabled = teleop.enabled;
++        teleop.enabled = false;
++        teleop.Ik.solving = true;
++        var clamp = typeof(WeldingTeleopController).GetMethod("ClampWorkspace",
++            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
++        var csv = new System.Text.StringBuilder("ejercicio,precision,punto,error_punta_mm,error_direccion_grados,arco_mm,objetivo_limitado\n");
++        var weldCsv = new System.Text.StringBuilder("ejercicio,energia_j,arco_estable,arco_mm\n");
++        var culture = System.Globalization.CultureInfo.InvariantCulture;
++        for (int exercise = 0; exercise < 5; exercise++)
++        {
++            course.BackToMenu();
++            // Retirar antes de cambiar geometria, como hace el operador al volver
++            // al menu. Evita arrancar la aproximacion desde dentro de la nueva junta.
++            Vector3 clearance = torch.ArcOriginPosition + Vector3.up * 0.12f;
++            float retractUntil = Time.unscaledTime + 3f;
++            while (Time.unscaledTime < retractUntil)
++            {
++                Vector3 desired = teleop.Ik.endEffector.position + clearance - torch.ArcOriginPosition;
++                teleop.Ik.target.position = (Vector3)clamp.Invoke(teleop, new object[] { desired });
++                yield return null;
++            }
++            course.SelectExercise(exercise);
++            for (int i = 0; i < 3; i++) yield return null;
++            Physics.SyncTransforms();
++            int sample = task.Seam.Count / 2;
++            if (exercise == 4)
++                for (int i = 0; i < task.Seam.Count; i++)
++                    if (task.Seam.PointAt(i).y > task.Seam.PointAt(sample).y) sample = i;
++            Vector3 normal = task.Seam.NormalAt(sample);
++            Vector3 tangent = task.Seam.TangentAt(sample);
++            Vector3 side = Vector3.Cross(normal, tangent).normalized;
++            Vector3 hand = (normal + tangent * Mathf.Tan(task.Order.IdealTravelAngle * Mathf.Deg2Rad) +
++                side * Mathf.Tan(task.Order.IdealWorkAngle * Mathf.Deg2Rad)).normalized;
++            Vector3 point = task.Seam.PointAt(sample) + hand * 0.00325f;
++            teleop.Ik.approachDirection = -hand;
++            for (int precision = 0; precision < 2; precision++)
++            {
++                teleop.SetPrecisionSolver(precision == 1);
++                float until = Time.unscaledTime + (exercise == 0 && precision == 0 ? 12f : 8f);
++                bool limited = false;
++                while (Time.unscaledTime < until)
++                {
++                    Vector3 desired = teleop.Ik.endEffector.position + point - torch.ArcOriginPosition;
++                    Vector3 bounded = (Vector3)clamp.Invoke(teleop, new object[] { desired });
++                    limited |= Vector3.Distance(desired, bounded) > 0.001f;
++                    teleop.Ik.target.position = bounded;
++                    if (Vector3.Distance(point, torch.ArcOriginPosition) < (precision == 1 ? 0.003f : 0.008f) &&
++                        Vector3.Angle(torch.PointingDir, -hand) < (precision == 1 ? 1f : 8f)) break;
++                    yield return null;
++                }
++                float error = Vector3.Distance(point, torch.ArcOriginPosition) * 1000f;
++                float direction = Vector3.Angle(torch.PointingDir, -hand);
++                csv.Append(task.WorkOrderId).Append(',').Append(precision).Append(',').Append(sample).Append(',')
++                    .Append(error.ToString("0.00", culture)).Append(',').Append(direction.ToString("0.00", culture)).Append(',')
++                    .Append(torch.MeasureArcLenMm().ToString("0.00", culture)).Append(',').Append(limited).Append('\n');
++                Debug.Log("[FrankaVR Reach] " + task.WorkOrderId + " precision=" + precision + " punta=" + error + " mm; direccion=" + direction + "; limite=" + limited);
++                if (precision == 1)
++                {
++                    task.StartTask();
++                    course.Phase = CoursePhaseV5.Running;
++                    torch.SetSparkRequested(true);
++                    float weldUntil = Time.unscaledTime + 1.2f;
++                    while (Time.unscaledTime < weldUntil)
++                    {
++                        Vector3 desired = teleop.Ik.endEffector.position + point - torch.ArcOriginPosition;
++                        teleop.Ik.target.position = (Vector3)clamp.Invoke(teleop, new object[] { desired });
++                        yield return null;
++                    }
++                    float energy = task.Seam.Get(sample).Energy;
++                    Debug.Log("[FrankaVR RobotWeld] " + task.WorkOrderId + " arco=" + torch.ArcLenMm +
++                        "; estado=" + torch.State + "; energia=" + energy);
++                    weldCsv.Append(task.WorkOrderId).Append(',').Append(energy.ToString("0.00", culture)).Append(',')
++                        .Append(torch.Arcing).Append(',').Append(torch.ArcLenMm.ToString("0.00", culture)).Append('\n');
++                    Capture("07_robot_" + task.WorkOrderId);
++                    torch.SetSparkRequested(false);
++                    task.FinishTask();
++                    course.Phase = CoursePhaseV5.Results;
++                }
++            }
++        }
++        Directory.CreateDirectory("Verificacion");
++        File.WriteAllText("Verificacion/Alcance_IK.csv", csv.ToString());
++        File.WriteAllText("Verificacion/Soldadura_IK.csv", weldCsv.ToString());
++        teleop.SetPrecisionSolver(false);
++        teleop.enabled = enabled;
++    }
++
++    public static void BuildAndroid()
++    {
++        FrankaVRSetupWizard.ConfigureCardboardAndroid();
++        EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
++        ValidateScene();
++        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions {
++            scenes = new[] { "Assets/Main.unity" }, locationPathName = "Builds/FrankaVR_Android/FrankaVR.apk",
++            target = BuildTarget.Android, options = BuildOptions.Development });
++        Directory.CreateDirectory("Verificacion");
++        File.WriteAllText("Verificacion/Resultado_Build_Android.txt", report.summary.result + "\nErrores: " + report.summary.totalErrors);
++        EditorApplication.Exit(report.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded ? 0 : 1);
+     }
+ 
+     static void CheckPanels()
+--- Antes/Assets\Scripts\GazeButton.cs
+
++++ Assets\Scripts\GazeButton.cs
+
+@@ -23,6 +23,49 @@
+
+ 
+     static readonly int ColorId = Shader.PropertyToID("_Color");
+     static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
++    MaterialPropertyBlock colors;
++
++    public static GazeButton CreateUI(Transform parent, string text, Vector3 position, float width,
++        System.Action action, Material background)
++    {
++        GameObject root = new GameObject("Boton_" + text);
++        root.layer = 5;
++        root.transform.SetParent(parent, false);
++        root.transform.localPosition = position;
++        BoxCollider collider = root.AddComponent<BoxCollider>();
++        collider.isTrigger = true;
++        collider.size = new Vector3(width, 0.055f, 0.02f);
++        GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
++        quad.layer = 5;
++        quad.transform.SetParent(root.transform, false);
++        quad.transform.localScale = new Vector3(width, 0.055f, 1f);
++        Collider old = quad.GetComponent<Collider>();
++        old.enabled = false;
++        Destroy(old);
++        Renderer renderer = quad.GetComponent<Renderer>();
++        renderer.sharedMaterial = background;
++        renderer.sortingOrder = -5;
++        GazeButton button = root.AddComponent<GazeButton>();
++        button.label = text;
++        button.highlight = renderer;
++        button.idleColor = new Color(0.08f, 0.24f, 0.30f, 0.95f);
++        button.onActivateAction = action;
++        GameObject caption = new GameObject("Etiqueta");
++        caption.transform.SetParent(root.transform, false);
++        caption.transform.localPosition = new Vector3(0f, 0f, -0.012f);
++        TextMesh mesh = caption.AddComponent<TextMesh>();
++        mesh.text = text;
++        mesh.anchor = TextAnchor.MiddleCenter;
++        mesh.alignment = TextAlignment.Center;
++        mesh.fontSize = 48;
++        mesh.characterSize = 0.007f;
++        Renderer captionRenderer = caption.GetComponent<Renderer>();
++        captionRenderer.sortingOrder = 10;
++        Bounds b = captionRenderer.localBounds;
++        caption.transform.localScale = Vector3.one * Mathf.Min(1f, (width - 0.02f) / Mathf.Max(0.001f, b.size.x),
++            0.034f / Mathf.Max(0.001f, b.size.y));
++        return button;
++    }
+ 
+     void Start() => Paint(idleColor);
+ 
+@@ -39,8 +82,12 @@
+
+     void Paint(Color c)
+     {
+         if (highlight == null) return;
+-        var m = highlight.material;
+-        if (m.HasProperty(BaseColorId)) m.SetColor(BaseColorId, c);
+-        if (m.HasProperty(ColorId)) m.SetColor(ColorId, c);
++        var m = highlight.sharedMaterial;
++        if (m == null) return;
++        if (colors == null) colors = new MaterialPropertyBlock();
++        highlight.GetPropertyBlock(colors);
++        if (m.HasProperty(BaseColorId)) colors.SetColor(BaseColorId, c);
++        if (m.HasProperty(ColorId)) colors.SetColor(ColorId, c);
++        highlight.SetPropertyBlock(colors);
+     }
+ }
+--- Antes/Assets\Scripts\GazeInteractor.cs
+
++++ Assets\Scripts\GazeInteractor.cs
+
+@@ -37,11 +37,13 @@
+
+ 
+     [Tooltip("Alcance del rayo, en metros.")]
+     public float maxDistance = 12f;
++    public LayerMask InteractionMask = ~0;
+ 
+     public GazeButton Current { get; private set; }
+     public float Progress { get; private set; }   // 0..1
+ 
+     Transform ring;
++    Transform dot;
+     Material dotMat, ringMat;
+     float held;
+ 
+@@ -58,7 +60,7 @@
+
+     {
+         if (playerCamera == null) return;
+ 
+-        MakeQuad("GazeDot", reticleRadius * 2f, out dotMat);
++        dot = MakeQuad("GazeDot", reticleRadius * 2f, out dotMat);
+         ring = MakeQuad("GazeRing", reticleRadius * 5f, out ringMat);
+         if (ring != null) ring.localScale = Vector3.zero;
+     }
+@@ -71,6 +73,7 @@
+
+ 
+         var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+         go.name = name;
++        go.GetComponent<Collider>().enabled = false;
+         Destroy(go.GetComponent<Collider>());   // el puntero no debe chocar con nada
+ 
+         var t = go.transform;
+@@ -90,8 +93,9 @@
+
+ 
+         var cam = playerCamera.transform;
+         GazeButton hit = null;
+-
+-        if (Physics.Raycast(cam.position, cam.forward, out RaycastHit info, maxDistance))
++        bool mobile = Application.platform == RuntimePlatform.Android;
++        Ray ray = mobile ? new Ray(cam.position, cam.forward) : playerCamera.ScreenPointToRay(Input.mousePosition);
++        if (Physics.Raycast(ray, out RaycastHit info, maxDistance, InteractionMask, QueryTriggerInteraction.Collide))
+             hit = info.collider.GetComponentInParent<GazeButton>();
+ 
+         if (hit != Current)
+@@ -104,10 +108,13 @@
+
+ 
+         if (Current != null && Current.isActiveAndEnabled)
+         {
+-            held += Time.deltaTime;
++            held += mobile ? Time.deltaTime : 0f;
+             Progress = Mathf.Clamp01(held / Mathf.Max(0.05f, dwellSeconds));
+-
+-            if (Progress >= 1f)
++            bool confirm = !mobile && Input.GetMouseButtonDown(0);
++#if UNITY_ANDROID && !UNITY_EDITOR
++            confirm |= Google.XR.Cardboard.Api.IsTriggerPressed;
++#endif
++            if (Progress >= 1f || confirm)
+             {
+                 Current.Activate();
+                 held = 0f;
+@@ -115,8 +122,24 @@
+
+             }
+         }
+         else Progress = 0f;
++        if (dot != null) dot.gameObject.SetActive(mobile);
++        if (ring != null) ring.gameObject.SetActive(mobile);
+ 
+         Paint();
++    }
++
++    void OnDestroy()
++    {
++        if (dot != null) SafeDestroy(dot.gameObject);
++        if (ring != null) SafeDestroy(ring.gameObject);
++        if (dotMat != null) SafeDestroy(dotMat);
++        if (ringMat != null) SafeDestroy(ringMat);
++    }
++
++    static void SafeDestroy(Object value)
++    {
++        if (Application.isPlaying) Destroy(value);
++        else DestroyImmediate(value);
+     }
+ 
+     void Paint()
+--- Antes/Assets\VR\MobileVRQuality.cs
+
++++ Assets\VR\MobileVRQuality.cs
+
+@@ -19,5 +19,36 @@
+
+         QualitySettings.shadowDistance = ShadowDistance;
+         QualitySettings.lodBias = LodBias;
+         if (DisableSoftParticles) QualitySettings.softParticles = false;
++#if UNITY_ANDROID && !UNITY_EDITOR
++        Screen.sleepTimeout = SleepTimeout.NeverSleep;
++        Camera camera = Camera.main;
++        if (camera != null)
++        {
++            var pose = camera.GetComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
++            if (pose == null) pose = camera.gameObject.AddComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
++            pose.SetPoseSource(UnityEngine.SpatialTracking.TrackedPoseDriver.DeviceType.GenericXRDevice,
++                UnityEngine.SpatialTracking.TrackedPoseDriver.TrackedPose.Head);
++            pose.trackingType = UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType.RotationOnly;
++            pose.updateType = UnityEngine.SpatialTracking.TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
++        }
++#endif
++    }
++
++    void Start()
++    {
++#if UNITY_ANDROID && !UNITY_EDITOR
++        if (!Google.XR.Cardboard.Api.HasDeviceParams()) Google.XR.Cardboard.Api.ScanDeviceParams();
++#endif
++    }
++
++    void Update()
++    {
++#if UNITY_ANDROID && !UNITY_EDITOR
++        if (Google.XR.Cardboard.Api.IsGearButtonPressed) Google.XR.Cardboard.Api.ScanDeviceParams();
++        if (Google.XR.Cardboard.Api.IsCloseButtonPressed) Application.Quit();
++        if (Google.XR.Cardboard.Api.IsTriggerHeldPressed) Google.XR.Cardboard.Api.Recenter();
++        if (Google.XR.Cardboard.Api.HasNewDeviceParams()) Google.XR.Cardboard.Api.ReloadDeviceParams();
++        Google.XR.Cardboard.Api.UpdateScreenParams();
++#endif
+     }
+ }
+--- Antes/Assets\XR\XRGeneralSettingsPerBuildTarget.asset
+
++++ Assets\XR\XRGeneralSettingsPerBuildTarget.asset
+
+@@ -1,5 +1,22 @@
+
+ %YAML 1.1
+ %TAG !u! tag:unity3d.com,2011:
++--- !u!114 &-3197296057283937155
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 0}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: f4c3631f5e58749a59194e0cf6baf6d5, type: 3}
++  m_Name: Android Providers
++  m_EditorClassIdentifier: Unity.XR.Management::UnityEngine.XR.Management.XRManagerSettings
++  m_RequiresSettingsUpdate: 0
++  m_AutomaticLoading: 1
++  m_AutomaticRunning: 1
++  m_Loaders:
++  - {fileID: 11400000, guid: 68fb50d292de9644295a008d75865807, type: 2}
+ --- !u!114 &-2175278430290685705
+ MonoBehaviour:
+   m_ObjectHideFlags: 0
+@@ -42,6 +59,21 @@
+
+   m_Script: {fileID: 11500000, guid: d2dc886499c26824283350fa532d087d, type: 3}
+   m_Name: XRGeneralSettingsPerBuildTarget
+   m_EditorClassIdentifier: Unity.XR.Management.Editor::UnityEditor.XR.Management.XRGeneralSettingsPerBuildTarget
+-  Keys: 01000000
++  Keys: 0100000007000000
+   Values:
+   - {fileID: -1587289535187677098}
++  - {fileID: 7999256102009657329}
++--- !u!114 &7999256102009657329
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 0}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: d236b7d11115f2143951f1e14045df39, type: 3}
++  m_Name: Android Settings
++  m_EditorClassIdentifier: Unity.XR.Management::UnityEngine.XR.Management.XRGeneralSettings
++  m_LoaderManagerInstance: {fileID: -3197296057283937155}
++  m_InitManagerOnStart: 1
+--- Antes/Assets\Scripts\Welding\KeyboardTeleopInput.cs
+
++++ Assets\Scripts\Welding\KeyboardTeleopInput.cs
+
+@@ -19,13 +19,17 @@
+
+         [Header("Sensibilidad")]
+         public float RotSpeedDeg = 60f; // grados/seg
+         public float TransRate   = 1f;  // magnitud de velocidad (0..1)
++        public float FineTranslationMultiplier = 0.02f;
++        public float FineRotationMultiplier = 0.15f;
+ 
+         Quaternion _accum = Quaternion.identity;
+         bool _prevCycle;
+ 
+         public TeleopCommand Poll(Quaternion currentToolOrientation)
+         {
+-            float dt = Time.deltaTime;
++            bool fine = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
++            float precision = fine ? FineTranslationMultiplier : 1f;
++            float dt = Time.deltaTime * (fine ? FineRotationMultiplier : 1f);
+             float pitch = (Key(KeyCode.I) - Key(KeyCode.K)) * RotSpeedDeg * dt;
+             float yaw   = (Key(KeyCode.L) - Key(KeyCode.J)) * RotSpeedDeg * dt;
+             float roll  = (Key(KeyCode.O) - Key(KeyCode.U)) * RotSpeedDeg * dt;
+@@ -36,7 +40,7 @@
+
+             Vector3 rate = new Vector3(
+                 Key(KeyCode.D) - Key(KeyCode.A),
+                 Key(KeyCode.E) - Key(KeyCode.Q),
+-                Key(KeyCode.W) - Key(KeyCode.S)) * TransRate;
++                Key(KeyCode.W) - Key(KeyCode.S)) * (TransRate * precision);
+ 
+             bool cycle = Input.GetKey(KeyCode.Tab);
+             bool cycleEdge = cycle && !_prevCycle;
+--- Antes/Assets\Scripts\Welding\WeldBeadRenderer.cs
+
++++ Assets\Scripts\Welding\WeldBeadRenderer.cs
+
+@@ -33,6 +33,10 @@
+
+         [Range(0f, 0.40f)] public float RippleStrength = 0.18f;
+         [Tooltip("Ondas visuales a lo largo del cordon.")]
+         public float RippleFrequency = 0.85f;
++        public float RipplePitchM = 0.010f;
++        public bool UseDomeProfile = true;
++        public bool ProjectOnWorkpiece = true;
++        public LayerMask SurfaceMask = 1 << 6;
+         [Range(0f, 0.30f)] public float SideIrregularity = 0.08f;
+         [Range(0f, 0.25f)] public float HeightIrregularity = 0.07f;
+ 
+@@ -103,9 +107,11 @@
+
+             int segs = Mathf.Max(6, RingSegments);
+             EnsureBuffers(n, segs);
+ 
++            float distanceAlong = 0f;
+             for (int i = 0; i < n; i++)
+             {
+                 SeamPoint sp = Seam.Get(i);
++                if (i > 0) distanceAlong += Vector3.Distance(sp.Pos, Seam.PointAt(i - 1));
+                 WeldQuality q = Seam.QualityAt(i);
+                 bool hasMetal = sp.Energy >= VisibleEnergyJ;
+ 
+@@ -120,7 +126,9 @@
+
+                     height = Mathf.Max(0.0005f, height * 0.35f);
+                 }
+ 
+-                float phase = i * RippleFrequency * Mathf.PI * 2f;
++                float phase = RipplePitchM > 0f
++                    ? distanceAlong / RipplePitchM * Mathf.PI * 2f
++                    : i * RippleFrequency * Mathf.PI * 2f;
+                 float ripple = 1f + RippleStrength * Mathf.Sin(phase);
+                 halfWidth *= Mathf.Max(0.62f, ripple);
+                 height *= Mathf.Max(0.72f, 1f + HeightIrregularity * Mathf.Sin(phase + 1.1f));
+@@ -131,8 +139,13 @@
+
+                 if (b0.sqrMagnitude < 1e-8f) b0 = Vector3.right;
+ 
+                 float side = hasMetal ? SideIrregularity * halfWidth * Mathf.Sin(i * 1.73f) : 0f;
+-                Vector3 center = sp.Pos
+-                    + n0 * (q == WeldQuality.BurnThrough ? -Lift : Lift)
++                Vector3 surface = sp.Pos;
++                float lift = Lift;
++                if (ProjectOnWorkpiece && Physics.Raycast(sp.Pos + n0 * 0.01f, -n0, out RaycastHit hit,
++                    0.03f, SurfaceMask, QueryTriggerInteraction.Ignore))
++                { surface = hit.point; lift = 0.0002f; }
++                Vector3 center = surface
++                    + n0 * (q == WeldQuality.BurnThrough ? -lift : lift)
+                     + b0 * side;
+ 
+                 Color quality = WeldingHeatModel.QualityColor(q);
+@@ -147,8 +160,8 @@
+
+                 {
+                     float a = (s / (float)segs) * 2f * Mathf.PI;
+                     // Seccion eliptica: ancha sobre la chapa y baja en la normal.
+-                    Vector3 radial = b0 * (Mathf.Cos(a) * halfWidth)
+-                                   + n0 * (Mathf.Sin(a) * height);
++                    float rise = UseDomeProfile ? Mathf.Max(0f, Mathf.Sin(a)) : Mathf.Sin(a);
++                    Vector3 radial = b0 * (Mathf.Cos(a) * halfWidth) + n0 * (rise * height);
+                     _verts[off + s] = transform.InverseTransformPoint(center + radial);
+                     _cols[off + s] = col;
+                 }
+--- Antes/Assets\Scripts\Welding\WeldingEnvironmentPolish.cs
+
++++ Assets\Scripts\Welding\WeldingEnvironmentPolish.cs
+
+@@ -1,5 +1,6 @@
+
+ using UnityEngine;
+ using UnityEngine.Rendering;
++using System.Collections.Generic;
+ 
+ namespace FrankaVR.Welding
+ {
+@@ -24,6 +25,10 @@
+
+         public Color FillColor = new Color(0.72f, 0.82f, 1f, 1f);
+         public float FillIntensity = 0.65f;
+         public float FillRange = 2.6f;
++        [Header("Presentacion")]
++        public bool PolishWorkshopMaterials = true;
++        public bool AddFloorMarkings = true;
++        readonly List<Material> _presentationMaterials = new List<Material>();
+ 
+         [Header("Guia de arco")]
+         public bool ShowArcGuide = true;
+@@ -71,6 +76,52 @@
+
+             BuildSeamMarkers();
+             BuildSeamPath();
+             BuildFillLight();
++            if (PolishWorkshopMaterials) ApplyWorkshopMaterials();
++            if (AddFloorMarkings) BuildFloorMarkings();
++        }
++
++        void ApplyWorkshopMaterials()
++        {
++            foreach (Renderer renderer in FindObjectsByType<Renderer>())
++            {
++                string name = renderer.gameObject.name;
++                Color color;
++                float metallic = 0f, smoothness = 0.25f;
++                if (name == "Piso") color = new Color(0.22f, 0.25f, 0.28f);
++                else if (name.StartsWith("Pared")) color = new Color(0.37f, 0.42f, 0.46f);
++                else if (name == "Biombo") color = new Color(0.31f, 0.13f, 0.09f);
++                else if (name == "MesaTapa" || name == "MesaHerramientas" || name.StartsWith("Balda") || name.StartsWith("Montante"))
++                { color = new Color(0.29f, 0.32f, 0.35f); metallic = 0.65f; smoothness = 0.32f; }
++                else if (name.StartsWith("Cajon")) color = new Color(0.10f, 0.26f, 0.32f);
++                else if (name.StartsWith("Tambor")) { color = new Color(0.17f, 0.24f, 0.27f); metallic = 0.35f; }
++                else continue;
++                Material[] source = renderer.sharedMaterials;
++                for (int i = 0; i < source.Length; i++)
++                {
++                    if (source[i] == null) continue;
++                    Material material = new Material(source[i]);
++                    material.name = "FrankaVR_Presentacion_" + name;
++                    if (material.HasProperty("_Color")) material.color = color;
++                    if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
++                    if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", smoothness);
++                    source[i] = material;
++                    _presentationMaterials.Add(material);
++                }
++                renderer.sharedMaterials = source;
++            }
++        }
++
++        void BuildFloorMarkings()
++        {
++            GameObject floor = GameObject.Find("Piso");
++            Renderer renderer = floor != null ? floor.GetComponent<Renderer>() : null;
++            if (renderer == null || Workpiece == null) return;
++            Vector3 c = Workpiece.position;
++            float y = renderer.bounds.max.y + 0.003f;
++            LineRenderer border = CreateLine("WorkshopFloorMarkings", 4, 0.025f, new Color(0.95f, 0.66f, 0.13f), true);
++            border.SetPositions(new[] {
++                new Vector3(c.x - 0.70f,y,c.z - 0.65f), new Vector3(c.x + 0.70f,y,c.z - 0.65f),
++                new Vector3(c.x + 0.70f,y,c.z + 0.65f), new Vector3(c.x - 0.70f,y,c.z + 0.65f) });
+         }
+ 
+         void AutoFindReferences()
+@@ -299,6 +350,7 @@
+
+             if (_startMarker != null) Destroy(_startMarker);
+             if (_endMarker != null) Destroy(_endMarker);
+             if (_fillLightGo != null) Destroy(_fillLightGo);
++            foreach (Material material in _presentationMaterials) if (material != null) Destroy(material);
+         }
+     }
+ }
+--- Antes/Assets\Scripts\Welding\WeldingSessionReport.cs
+
++++ Assets\Scripts\Welding\WeldingSessionReport.cs
+
+@@ -0,0 +1,81 @@
+
++using System;
++using System.Globalization;
++using System.IO;
++using System.Text;
++using UnityEngine;
++
++namespace FrankaVR.Welding
++{
++    /// <summary>Exporta las metricas existentes; no cambia el modelo ni la nota.</summary>
++    public static class WeldingSessionReport
++    {
++        [Serializable]
++        public class Result
++        {
++            public int schemaVersion = 1;
++            public string timestampUtc, exercise, title, mode;
++            public bool indexedPipe, passed;
++            public float score, seconds, arcOnSeconds, meanArcMm, arcDeviationMm, coveragePercent;
++            public int totalPoints, good, cold, burnThrough, undercut, porosity, untouched, sticks, arcBreaks, electrodes;
++            public string advice;
++        }
++
++        public static Result Snapshot(WeldingTaskManager task, string mode, bool indexedPipe)
++        {
++            int total = task.Seam != null ? task.Seam.Count : 0;
++            return new Result
++            {
++                timestampUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
++                exercise = task.WorkOrderId,
++                title = task.Order != null ? task.Order.Title : "",
++                mode = mode, indexedPipe = indexedPipe, passed = task.Passed(),
++                score = task.FinalScore, seconds = task.Elapsed, arcOnSeconds = task.ArcOnTime,
++                meanArcMm = task.MeanArcLenMm, arcDeviationMm = task.ArcLenStdMm,
++                totalPoints = total, good = task.GoodPoints, cold = task.ColdPoints,
++                burnThrough = task.BurnPoints, undercut = task.UndercutPoints,
++                porosity = task.PorosityPoints, untouched = task.UntouchedPoints,
++                sticks = task.StickCount, arcBreaks = task.ArcBreaks, electrodes = task.ElectrodesUsed,
++                coveragePercent = total > 0 ? 100f * (total - task.UntouchedPoints) / total : 0f,
++                advice = Advice(task)
++            };
++        }
++
++        public static string Advice(WeldingTaskManager task)
++        {
++            if (task.UntouchedPoints == (task.Seam != null ? task.Seam.Count : 0))
++                return "Acerca el electrodo al trazo y manten Espacio para soldar.";
++            int max = Mathf.Max(task.ColdPoints, task.BurnPoints, task.UndercutPoints, task.PorosityPoints);
++            if (max == 0) return task.UntouchedPoints > 0 ? "Completa los tramos que quedaron sin soldar." : "Mantiene este ritmo y la longitud de arco.";
++            if (max == task.BurnPoints) return "Perforacion: evita quedarte en un punto y revisa la corriente.";
++            if (max == task.UndercutPoints) return "Socavado: revisa los angulos de trabajo y avance.";
++            if (max == task.PorosityPoints) return "Porosidad: busca un arco corto y constante.";
++            return "Falta de fusion: reduce el avance o revisa la corriente.";
++        }
++
++        public static string Save(WeldingTaskManager task, string mode, bool indexedPipe, string directoryOverride = null)
++        {
++            if (task.State != SessionState.Finished) throw new InvalidOperationException("La sesion no termino");
++            Result result = Snapshot(task, mode, indexedPipe);
++            string folder = string.IsNullOrWhiteSpace(directoryOverride)
++                ? Path.Combine(Application.persistentDataPath, "Resultados") : directoryOverride;
++            Directory.CreateDirectory(folder);
++            string name = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture) +
++                "_" + result.exercise + "_" + Guid.NewGuid().ToString("N").Substring(0, 6);
++            string jsonPath = Path.Combine(folder, name + ".json");
++            string[] headers = { "fecha_utc", "ejercicio", "modo", "cano_indexado", "nota", "aprobado", "duracion_s", "arco_s",
++                "arco_medio_mm", "desvio_arco_mm", "cobertura_pct", "puntos", "correctos", "frios", "perforacion", "socavado",
++                "porosidad", "sin_soldar", "pegadas", "cortes", "electrodos", "recomendacion" };
++            string[] values = { result.timestampUtc, result.exercise, result.mode, result.indexedPipe.ToString(), N(result.score),
++                result.passed.ToString(), N(result.seconds), N(result.arcOnSeconds), N(result.meanArcMm), N(result.arcDeviationMm),
++                N(result.coveragePercent), result.totalPoints.ToString(), result.good.ToString(), result.cold.ToString(),
++                result.burnThrough.ToString(), result.undercut.ToString(), result.porosity.ToString(), result.untouched.ToString(),
++                result.sticks.ToString(), result.arcBreaks.ToString(), result.electrodes.ToString(), result.advice };
++            for (int i = 0; i < values.Length; i++) values[i] = "\"" + values[i].Replace("\"", "\"\"") + "\"";
++            File.WriteAllText(jsonPath, JsonUtility.ToJson(result, true), new UTF8Encoding(false));
++            File.WriteAllText(Path.Combine(folder, name + ".csv"), string.Join(",", headers) + "\n" + string.Join(",", values) + "\n", new UTF8Encoding(true));
++            return Path.GetFullPath(jsonPath);
++        }
++
++        static string N(float value) => value.ToString("0.###", CultureInfo.InvariantCulture);
++    }
++}
+--- Antes/Assets\Scripts\Welding\WeldingSessionReport.cs.meta
+
++++ Assets\Scripts\Welding\WeldingSessionReport.cs.meta
+
+@@ -0,0 +1,11 @@
+
++fileFormatVersion: 2
++guid: 5f1256e529cc4915874b91cc757625e5
++MonoImporter:
++  externalObjects: {}
++  serializedVersion: 2
++  defaultReferences: []
++  executionOrder: 0
++  icon: {instanceID: 0}
++  userData: 
++  assetBundleName: 
++  assetBundleVariant: 
+--- Antes/Assets\Scripts\Welding\WeldingTeleopController.cs
+
++++ Assets\Scripts\Welding\WeldingTeleopController.cs
+
+@@ -54,6 +54,31 @@
+
+ 
+         [Header("Arranque")]
+         public bool AutoStartTask = true;
++        [Header("Precision de teclado (Ctrl)")]
++        public float FinePositionTolerance = 0.001f;
++        public float FineAngleTolerance = 0.5f;
++        bool _precisionSolverActive;
++        float _normalPositionTolerance, _normalAngleTolerance;
++
++        public void SetPrecisionSolver(bool active)
++        {
++            if (Ik == null || _precisionSolverActive == active) return;
++            if (active)
++            {
++                _normalPositionTolerance = Ik.toleranceMeters;
++                _normalAngleTolerance = Ik.toleranceDegrees;
++                Ik.toleranceMeters = Mathf.Min(_normalPositionTolerance, FinePositionTolerance);
++                Ik.toleranceDegrees = Mathf.Min(_normalAngleTolerance, FineAngleTolerance);
++            }
++            else
++            {
++                Ik.toleranceMeters = _normalPositionTolerance;
++                Ik.toleranceDegrees = _normalAngleTolerance;
++            }
++            _precisionSolverActive = active;
++        }
++
++        void OnDisable() => SetPrecisionSolver(false);
+ 
+         ITeleopInput _in;
+         string _targetOrigin = "sin inicializar";
+@@ -149,6 +174,9 @@
+
+             Ik.orientationWeight = OrientationWeight;
+ 
+             TeleopCommand cmd = _in.Poll(Ik.endEffector.rotation);
++            bool keyboardMotion = _in is KeyboardTeleopInput ||
++                (_in is HybridTeleopInput hybrid && !hybrid.GloveMotionActive);
++            SetPrecisionSolver(keyboardMotion && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)));
+ 
+             if (cmd.MoveClutch)
+                 _targetPos += ToWorldRate(cmd.TranslationRate) * (MoveSpeed * Time.deltaTime);
+--- Antes/Assets\Scripts\Welding\WeldingTorch.cs
+
++++ Assets\Scripts\Welding\WeldingTorch.cs
+
+@@ -533,7 +533,8 @@
+
+             // IMPORTANTE: siempre se lanza contra TODAS las capas. El filtro de capa se usa
+             // solo como PREFERENCIA, no como requisito. Asi una WorkpieceMask mal configurada
+             // no deja la distancia clavada para siempre.
+-            int n = Physics.RaycastNonAlloc(origin, PointingDir, _hitBuf, range, ~0);
++            // Los controles UI usan triggers; no son superficies de soldadura.
++            int n = Physics.RaycastNonAlloc(origin, PointingDir, _hitBuf, range, ~0, QueryTriggerInteraction.Ignore);
+             bool gotPreferred = false;
+             bool gotFallback = false;
+             RaycastHit preferred = default(RaycastHit);
+--- Antes/Assets\Scripts\Welding\WeldSeam.cs
+
++++ Assets\Scripts\Welding\WeldSeam.cs
+
+@@ -104,6 +104,21 @@
+
+         }
+ 
+         public SeamPoint Get(int i) => _pts[i];
++
++        /// Giro de la pieza N5 sin reconstruir ni perder energia/calidad depositada.
++        public void RotateCircleSamples(float degrees)
++        {
++            if (Shape != SeamShape.Circle || _pts == null) return;
++            Vector3 center = CircleCenter ? CircleCenter.position : transform.position;
++            Quaternion rotation = Quaternion.AngleAxis(degrees, CircleAxis.normalized);
++            for (int i = 0; i < _pts.Length; i++)
++            {
++                _pts[i].Pos = center + rotation * (_pts[i].Pos - center);
++                _pts[i].Normal = rotation * _pts[i].Normal;
++                _pts[i].Tangent = rotation * _pts[i].Tangent;
++            }
++            Dirty = true;
++        }
+         public Vector3 PointAt(int i) => _pts[i].Pos;
+         public Vector3 NormalAt(int i) => _pts[i].Normal;
+         public Vector3 TangentAt(int i) => _pts[i].Tangent;
+--- Antes/Assets\Scripts\Welding\Editor\FrankaVRSetupWizard.cs
+
++++ Assets\Scripts\Welding\Editor\FrankaVRSetupWizard.cs
+
+@@ -12,6 +12,45 @@
+
+ /// </summary>
+ public static class FrankaVRSetupWizard
+ {
++    [MenuItem("FrankaVR/12 - Preparar Cardboard Android")]
++    public static void ConfigureCardboardAndroid()
++    {
++        var settings = AssetDatabase.LoadAssetAtPath<UnityEditor.XR.Management.XRGeneralSettingsPerBuildTarget>(
++            "Assets/XR/XRGeneralSettingsPerBuildTarget.asset");
++        if (settings == null) throw new System.InvalidOperationException("No existe el asset XR del proyecto");
++        if (!settings.HasSettingsForBuildTarget(BuildTargetGroup.Android))
++            settings.CreateDefaultSettingsForBuildTarget(BuildTargetGroup.Android);
++        if (!settings.HasManagerSettingsForBuildTarget(BuildTargetGroup.Android))
++            settings.CreateDefaultManagerSettingsForBuildTarget(BuildTargetGroup.Android);
++        var android = settings.SettingsForBuildTarget(BuildTargetGroup.Android);
++        var loader = AssetDatabase.LoadAssetAtPath<Google.XR.Cardboard.XRLoader>("Assets/XR/Loaders/XRLoader.asset");
++        if (loader == null) throw new System.InvalidOperationException("No se encontro el loader Cardboard existente");
++        android.InitManagerOnStart = true;
++        android.Manager.automaticLoading = true;
++        android.Manager.automaticRunning = true;
++        android.Manager.TrySetLoaders(new System.Collections.Generic.List<UnityEngine.XR.Management.XRLoader> { loader });
++        EditorUtility.SetDirty(android.Manager);
++        EditorUtility.SetDirty(android);
++        EditorUtility.SetDirty(settings);
++        PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
++        PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 });
++        PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
++        PlayerSettings.Android.targetSdkVersion = (AndroidSdkVersions)36;
++        // Los meshes URDF ya estan importados. Sus librerias nativas de escritorio
++        // no deben empaquetarse como plugins Android (x86/x64 comparten nombre).
++        foreach (PluginImporter plugin in PluginImporter.GetAllImporters())
++        {
++            string path = plugin.assetPath.Replace('\\', '/');
++            if (!path.Contains("com.unity.robotics.urdf-importer") || !path.Contains("/AssimpNet/Native/")) continue;
++            plugin.SetExcludeFromAnyPlatform(BuildTarget.Android, true);
++            plugin.SetCompatibleWithPlatform(BuildTarget.Android, false);
++            AssetDatabase.WriteImportSettingsIfDirty(plugin.assetPath);
++            Debug.Log("[Android plugins] Excluido: " + plugin.assetPath + "; compatible=" + plugin.GetCompatibleWithPlatform(BuildTarget.Android));
++        }
++        AssetDatabase.SaveAssets();
++        Debug.Log("[FrankaVR] Cardboard Android preparado. Standalone conserva su configuracion XR.");
++    }
++
+     [MenuItem("FrankaVR/1 - Configurar Cardboard + Guantes")]
+     public static void SetupCore()
+     {
+--- Antes/Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
+
++++ Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
+
+@@ -22,11 +22,17 @@
+
+         Transform _root;
+         TextMesh _title, _exercise, _list, _keys;
+         Material _bgMat;
++        VRTrainingHUDV6 _hud;
++        DesktopNavigatorV6 _navigator;
++        CoursePhaseV5 _lastPhase;
++        GazeButton[] _exerciseButtons = new GazeButton[5];
+ 
+         void Start()
+         {
+             if (Course == null) Course = FindObjectOfType<CourseTrainingManagerV5>();
+             if (PlayerCamera == null) PlayerCamera = Camera.main;
++            _hud = FindFirstObjectByType<VRTrainingHUDV6>();
++            _navigator = FindFirstObjectByType<DesktopNavigatorV6>();
+             Build();
+         }
+ 
+@@ -52,6 +58,16 @@
+
+             _exercise = MakeText("Exercise", new Vector3(0f, 0.25f, -0.004f), 54, 0.0078f, new Color(0.82f, 0.90f, 1f), TextAnchor.MiddleCenter);
+             _list = MakeText("List", new Vector3(-0.44f, -0.015f, -0.004f), 48, 0.0065f, new Color(0.85f, 0.90f, 0.95f), TextAnchor.MiddleLeft);
+             _keys = MakeText("Keys", new Vector3(-0.44f, -0.32f, -0.004f), 42, 0.0062f, new Color(0.70f, 0.78f, 0.87f), TextAnchor.MiddleLeft);
++            string[] names = { "N1 · PLACA", "N2 · TOPE", "N3 · FILETE T", "N4 · SOLAPE", "N5 · CAÑO" };
++            for (int i = 0; i < 5; i++)
++            {
++                int exercise = i;
++                _exerciseButtons[i] = GazeButton.CreateUI(_root, names[i], new Vector3(0f, 0.14f - i * 0.07f, -0.014f),
++                    0.86f, () => Course.SelectExercise(exercise), _bgMat);
++            }
++            GazeButton.CreateUI(_root, "PRACTICAR", new Vector3(-0.30f,-0.32f,-0.014f), 0.27f, () => Course.StartTraining(), _bgMat);
++            GazeButton.CreateUI(_root, "EXAMEN", new Vector3(0f,-0.32f,-0.014f), 0.27f, () => Course.StartExam(), _bgMat);
++            GazeButton.CreateUI(_root, "MENU", new Vector3(0.30f,-0.32f,-0.014f), 0.27f, () => Course.BackToMenu(), _bgMat);
+         }
+ 
+         TextMesh MakeText(string name, Vector3 localPos, int fontSize, float charSize, Color color, TextAnchor anchor)
+@@ -72,20 +88,30 @@
+
+         void LateUpdate()
+         {
+             if (_root == null || PlayerCamera == null) return;
+-
+-            bool shouldShow = !(HideWhileRunning && Course != null && Course.Phase == CoursePhaseV5.Running);
++            if (Course != null)
++            {
++                if (Course.Phase == CoursePhaseV5.Results && _lastPhase != CoursePhaseV5.Results && _hud != null)
++                    _hud.ShowHelpDuringRunning = false;
++                _lastPhase = Course.Phase;
++            }
++
++            bool help = _hud != null && _hud.ShowHelpDuringRunning;
++            bool shouldShow = help || !(HideWhileRunning && Course != null && Course.Phase == CoursePhaseV5.Running);
+             if (_root.gameObject.activeSelf != shouldShow) _root.gameObject.SetActive(shouldShow);
+             if (!shouldShow) return;
+ 
+             Transform cam = PlayerCamera.transform;
++            Transform body = Application.platform == RuntimePlatform.Android && cam.parent != null ? cam.parent : cam;
++            float scale = _navigator != null ? _navigator.InterfaceScale : 1f;
++            _root.localScale = Vector3.one * scale;
+             Vector3 fwd = cam.forward; fwd.y = 0f; if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward; else fwd.Normalize();
+             Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+             // Mantener el panel en el campo visual tambien cuando la cabeza mira abajo.
+             _root.position = FollowCameraYaw
+-                ? cam.position + cam.forward * Distance + cam.right * SideOffset + cam.up * VerticalOffset
++                ? cam.position + body.forward * Distance + body.right * (SideOffset * scale) + body.up * (VerticalOffset * scale)
+                 : cam.position + fwd * Distance + right * SideOffset + Vector3.up * VerticalOffset;
+             _root.rotation = FollowCameraYaw
+-                ? Quaternion.LookRotation(_root.position - cam.position, cam.up)
++                ? Quaternion.LookRotation(_root.position - cam.position, body.up)
+                 : Quaternion.identity;
+             UpdateText();
+         }
+@@ -106,25 +132,42 @@
+
+                 BuildExerciseLine(2, "N3  Filete T") + "\n" +
+                 BuildExerciseLine(3, "N4  Solape") + "\n" +
+                 BuildExerciseLine(4, "N5  Caño a tope");
++            bool selection = Course != null && Course.Phase == CoursePhaseV5.Selection &&
++                (_hud == null || !_hud.ShowHelpDuringRunning);
++            foreach (GazeButton button in _exerciseButtons) if (button != null) button.gameObject.SetActive(selection);
++            if (selection) body = "";
+ 
+             if (Course != null && Course.Phase == CoursePhaseV5.Briefing && Course.SelectedOrder != null)
+             {
+                 WorkOrder order = Course.SelectedOrder;
+                 body = Wrap(order.Brief, 45) + "\n\n" + order.RecommendedElectrode + " · " + order.RecommendedAmps.ToString("0") + " A";
++                if (order.Id == "N5") body = "Caño de 120 mm: practicar el recorrido por sectores.\n" +
++                    "En practica Z/X gira la pieza con el arco apagado.\n" +
++                    "En examen el caño permanece fijo.\n\n" + order.RecommendedElectrode + " · " + order.RecommendedAmps.ToString("0") + " A";
+             }
+             if (Course != null && Course.Phase == CoursePhaseV5.Results && Course.Task != null)
+             {
+                 WeldingTaskManager task = Course.Task;
+-                body = "Nota: " + task.FinalScore.ToString("0") + "/100\n" +
+-                    "Tiempo: " + task.Elapsed.ToString("0") + " s · Varillas: " + task.ElectrodesUsed + "\n" +
++                var result = WeldingSessionReport.Snapshot(task, Course.Mode.ToString(), Course.UsesPipeIndexer);
++                body = "Nota: " + task.FinalScore.ToString("0") + "/100 · " + (task.Passed() ? "APROBADO" : "SEGUIR PRACTICANDO") + "\n" +
++                    "Cobertura: " + result.coveragePercent.ToString("0") + "% · Tiempo: " + task.Elapsed.ToString("0") + " s\n" +
+                     "Correctos: " + task.GoodPoints + " · Sin soldar: " + task.UntouchedPoints + "\n" +
+-                    "Falta de fusion: " + task.ColdPoints + "\n" +
+-                    "Perforacion: " + task.BurnPoints + " · Socavado: " + task.UndercutPoints + "\n" +
+-                    "Porosidad: " + task.PorosityPoints;
+-            }
+-            SetText(_list, body, 0.88f, 0.34f);
+-            SetText(_keys, "1–5: elegir · T: practicar · Y: examen · M: menu\n" +
+-                "Flechas/Pag: moverse · Mouse der.: mirar\nN/P: estaciones · C: recentrar", 0.88f, 0.10f);
++                    "Frios: " + task.ColdPoints + " · Perforacion: " + task.BurnPoints + "\n" +
++                    "Socavado: " + task.UndercutPoints + " · Porosidad: " + task.PorosityPoints + "\n\n" +
++                    Wrap(result.advice, 45) + "\n" +
++                    (string.IsNullOrEmpty(Course.ResultSaveError) ? "Resultado guardado en JSON y CSV" : Course.ResultSaveError);
++            }
++            if (_hud != null && _hud.ShowHelpDuringRunning)
++                body = "ROBOT  WASD/QE: mover · IJKL/UO: orientar\n" +
++                    "ARCO   Espacio: soldar · R: reponer\n" +
++                    "Tab: tipo · [ / ]: amperaje · H: careta\n" +
++                    "Ctrl: movimiento y orientacion finos\n" +
++                    "VISTA  Flechas/Pag · Mouse derecho: mirar\n" +
++                    "Rueda: zoom · Retroceso: restaurar zoom\n" +
++                    "N/P: estaciones · N5 practica: Z/X gira caño\n" +
++                    "F: finalizar · M: menu · F1: cerrar ayuda";
++            SetText(_list, body, 0.88f, 0.36f);
++            SetText(_keys, "", 0.88f, 0.10f);
+         }
+ 
+         static string Wrap(string value, int columns)
+--- Antes/Assets\FrankaVR\V6\VR\DesktopNavigatorV6.cs
+
++++ Assets\FrankaVR\V6\VR\DesktopNavigatorV6.cs
+
+@@ -16,6 +16,11 @@
+
+         [Header("Movimiento")]
+         public float MoveSpeed = 1.8f;
+         public float FastMultiplier = 2.5f;
++        public float FineMultiplier = 0.20f;
++        [Header("Zoom PC")]
++        public float ZoomDegreesPerStep = 6f;
++        public float MinFieldOfView = 38f;
++        public float MaxFieldOfView = 75f;
+         public KeyCode UpKey = KeyCode.UpArrow;
+         public KeyCode DownKey = KeyCode.DownArrow;
+         public KeyCode LeftKey = KeyCode.LeftArrow;
+@@ -30,6 +35,10 @@
+
+ 
+         float _yaw;
+         float _pitch;
++        float _initialFieldOfView = 60f;
++        public float InterfaceScale => PlayerCamera != null && Application.platform != RuntimePlatform.Android
++            ? Mathf.Tan(PlayerCamera.fieldOfView * 0.5f * Mathf.Deg2Rad) / Mathf.Tan(_initialFieldOfView * 0.5f * Mathf.Deg2Rad)
++            : 1f;
+ 
+         void Start()
+         {
+@@ -38,6 +47,7 @@
+
+ 
+             if (PlayerCamera != null)
+             {
++                _initialFieldOfView = PlayerCamera.fieldOfView;
+                 Vector3 e = PlayerCamera.transform.localEulerAngles;
+                 _yaw = Normalize(e.y);
+                 _pitch = Normalize(e.x);
+@@ -67,6 +77,21 @@
+
+ 
+             MoveRig();
+             RotateLook();
++            ZoomBy(Input.GetAxis("Mouse ScrollWheel") * 10f);
++            if (Input.GetKeyDown(KeyCode.Backspace)) ResetZoom();
++        }
++
++        public void ZoomBy(float steps)
++        {
++            if (PlayerCamera == null || Application.platform == RuntimePlatform.Android) return;
++            PlayerCamera.fieldOfView = Mathf.Clamp(PlayerCamera.fieldOfView - steps * ZoomDegreesPerStep,
++                MinFieldOfView, MaxFieldOfView);
++        }
++
++        public void ResetZoom()
++        {
++            if (PlayerCamera != null && Application.platform != RuntimePlatform.Android)
++                PlayerCamera.fieldOfView = _initialFieldOfView;
+         }
+ 
+         void MoveRig()
+@@ -82,6 +107,7 @@
+
+             move = Vector3.ClampMagnitude(move, 1f);
+ 
+             float speed = MoveSpeed * (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) ? FastMultiplier : 1f);
++            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) speed = MoveSpeed * FineMultiplier;
+ 
+             Vector3 camForward = PlayerCamera.transform.forward;
+             Vector3 camRight = PlayerCamera.transform.right;
+--- Antes/Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
+
++++ Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
+
+@@ -33,11 +33,16 @@
+
+         TextMesh _headline, _metrics, _help, _alert;
+         Renderer _bg, _alertBg;
+         Material _bgMat, _alertMat;
++        GazeButton _pipeBack, _pipeForward;
+ 
+         void Start()
+         {
+             Resolve();
+             Build();
++            GazeInteractor pointer = FindFirstObjectByType<GazeInteractor>();
++            if (pointer == null) pointer = gameObject.AddComponent<GazeInteractor>();
++            pointer.playerCamera = PlayerCamera;
++            pointer.InteractionMask = 1 << 5;
+         }
+ 
+         void Resolve()
+@@ -61,7 +66,8 @@
+
+             GameObject bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
+             bg.name = "HUD_Background";
+             bg.transform.SetParent(_root, false);
+-            bg.transform.localScale = new Vector3(Width, Height, 1f);
++            bg.transform.localScale = new Vector3(Width, Height + 0.08f, 1f);
++            bg.transform.localPosition = new Vector3(0f, -0.04f, 0f);
+             SafeDestroy(bg.GetComponent<Collider>());
+             _bg = bg.GetComponent<Renderer>();
+             _bg.sortingOrder = -10;
+@@ -88,6 +94,11 @@
+
+             _metrics  = MakeText("Metrics",  new Vector3(0f, 0.035f, -0.004f), 52, 0.0078f, new Color(0.82f, 0.89f, 0.98f), TextAnchor.MiddleCenter);
+             _help     = MakeText("Help",     new Vector3(0f, -0.052f, -0.004f), 42, 0.0062f, new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter);
+             _alert    = MakeText("Alert",    new Vector3(0f, -0.128f, -0.005f), 58, 0.0082f, new Color(1f, 0.84f, 0.32f), TextAnchor.MiddleCenter);
++            GazeButton.CreateUI(_root, "FIN", new Vector3(-0.42f,-0.21f,-0.014f), 0.18f, () => Course.FinishExercise(), _bgMat);
++            GazeButton.CreateUI(_root, "AYUDA", new Vector3(-0.21f,-0.21f,-0.014f), 0.18f, () => ShowHelpDuringRunning = !ShowHelpDuringRunning, _bgMat);
++            GazeButton.CreateUI(_root, "VISTA", new Vector3(0f,-0.21f,-0.014f), 0.18f, () => Viewpoints.Next(), _bgMat);
++            _pipeBack = GazeButton.CreateUI(_root, "CAÑO -", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(-15f), _bgMat);
++            _pipeForward = GazeButton.CreateUI(_root, "CAÑO +", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(15f), _bgMat);
+         }
+ 
+         TextMesh MakeText(string name, Vector3 localPos, int fontSize, float charSize, Color color, TextAnchor anchor)
+@@ -108,9 +119,16 @@
+
+         void LateUpdate()
+         {
+             if (_root == null || PlayerCamera == null) return;
++            if (Input.GetKeyDown(KeyCode.F1)) ShowHelpDuringRunning = !ShowHelpDuringRunning;
+             Transform cam = PlayerCamera.transform;
+-            _root.position = cam.position + cam.forward * Distance + cam.up * VerticalOffset + cam.right * HorizontalOffset;
+-            _root.rotation = Quaternion.LookRotation(_root.position - cam.position, cam.up);
++            Transform body = Application.platform == RuntimePlatform.Android && cam.parent != null ? cam.parent : cam;
++            float scale = Navigator != null ? Navigator.InterfaceScale : 1f;
++            _root.localScale = Vector3.one * scale;
++            _root.position = cam.position + body.forward * Distance + body.up * (VerticalOffset * scale) + body.right * (HorizontalOffset * scale);
++            _root.rotation = Quaternion.LookRotation(_root.position - cam.position, body.up);
++            bool index = Course != null && Course.UsesPipeIndexer && Course.Phase == CoursePhaseV5.Running;
++            _pipeBack.gameObject.SetActive(index);
++            _pipeForward.gameObject.SetActive(index);
+             UpdateText();
+         }
+ 
+@@ -136,11 +154,12 @@
+
+             bool running = Course != null && Course.Phase == CoursePhaseV5.Running;
+             if (running && !ShowHelpDuringRunning)
+             {
+-                SetText(_help, "F: finalizar · M: menu · N/P: estaciones", Width * 0.90f, 0.045f);
++                string keys = Course != null && Course.UsesPipeIndexer ? "Z/X: girar caño · " : "";
++                SetText(_help, keys + "F: finalizar · F1: ayuda", Width * 0.90f, 0.045f);
+             }
+             else
+             {
+-                SetText(_help, "WASD/QE: robot · IJKL/UO: orientar\nEspacio: arco · R: recargar · Tab: electrodo · H: careta", Width * 0.90f, 0.060f);
++                SetText(_help, "Ctrl: precision · Rueda: zoom · F1: ayuda\nEspacio: arco · R: recargar · Tab: electrodo · H: careta", Width * 0.90f, 0.060f);
+             }
+ 
+             string alert = ComputeAlert();
+--- Antes/Assets\FrankaVR\V5\Course\CourseTrainingManagerV5.cs
+
++++ Assets\FrankaVR\V5\Course\CourseTrainingManagerV5.cs
+
+@@ -27,6 +27,12 @@
+
+         [Header("Estado (solo lectura)")]
+         public CoursePhaseV5 Phase = CoursePhaseV5.Selection;
+         public string CurrentOrderId = "N1";
++        public string LastResultPath;
++        public string ResultSaveError;
++        [Tooltip("Vacio: carpeta Resultados en persistentDataPath. Puede cambiarse para pruebas.")]
++        public string ResultsDirectoryOverride;
++        public bool UsesPipeIndexer => CurrentOrderId == "N5" && Mode == CourseModeV5.Training;
++        bool _resultSaved;
+ 
+         public WorkOrder SelectedOrder
+         {
+@@ -57,7 +63,10 @@
+
+             if (Guidance != null)
+                 Guidance.SetGuidanceVisible(Phase != CoursePhaseV5.Running || Mode == CourseModeV5.Training);
+             if (Task != null && Task.State == SessionState.Finished && Phase == CoursePhaseV5.Running)
++            {
+                 Phase = CoursePhaseV5.Results;
++                SaveResult();
++            }
+ 
+             if (!KeyboardShortcuts) return;
+ 
+@@ -71,6 +80,36 @@
+
+             if (Input.GetKeyDown(KeyCode.Y)) StartExam();
+             if (Input.GetKeyDown(KeyCode.F) && Phase == CoursePhaseV5.Running) FinishExercise();
+             if (Input.GetKeyDown(KeyCode.M)) BackToMenu();
++            if (Input.GetKeyDown(KeyCode.G) && Phase == CoursePhaseV5.Results) SaveResult();
++            if (Input.GetKeyDown(KeyCode.Z)) IndexPipe(-15f);
++            if (Input.GetKeyDown(KeyCode.X)) IndexPipe(15f);
++        }
++
++        public bool IndexPipe(float degrees)
++        {
++            if (!UsesPipeIndexer || Phase != CoursePhaseV5.Running || Workpieces == null || Task == null) return false;
++            if (Task.Torch != null && (Task.Torch.SparkRequested || Task.Torch.Arcing || Task.Torch.Stuck)) return false;
++            return Workpieces.IndexPipe(degrees);
++        }
++
++        public bool SaveResult()
++        {
++            if (Task == null || Task.State != SessionState.Finished) return false;
++            if (_resultSaved) return true;
++            try
++            {
++                LastResultPath = WeldingSessionReport.Save(Task, Mode.ToString(),
++                    UsesPipeIndexer, ResultsDirectoryOverride);
++                ResultSaveError = "";
++                _resultSaved = true;
++                return true;
++            }
++            catch (System.Exception ex)
++            {
++                ResultSaveError = "No se pudo guardar. G: reintentar";
++                Debug.LogWarning("[Resultados] " + ex.Message);
++                return false;
++            }
+         }
+ 
+         public void SelectExercise(int index)
+@@ -122,6 +161,9 @@
+
+ 
+         void BeginSelected()
+         {
++            _resultSaved = false;
++            LastResultPath = "";
++            ResultSaveError = "";
+             PrepareSelected();
+             if (Task != null) Task.StartTask();
+             Phase = CoursePhaseV5.Running;
+@@ -129,8 +171,10 @@
+
+ 
+         public void FinishExercise()
+         {
++            if (Phase != CoursePhaseV5.Running) return;
+             if (Task != null) Task.FinishTask();
+             Phase = CoursePhaseV5.Results;
++            SaveResult();
+         }
+ 
+         public void RestartExercise()
+@@ -150,7 +194,8 @@
+
+             {
+                 case CoursePhaseV5.Selection: return "SELECCION DE EJERCICIO";
+                 case CoursePhaseV5.Briefing:  return "INSTRUCCIONES";
+-                case CoursePhaseV5.Running:   return Mode == CourseModeV5.Training ? "ENTRENAMIENTO" : "EXAMEN";
++                case CoursePhaseV5.Running:   return Mode == CourseModeV5.Training
++                    ? (UsesPipeIndexer ? "PRACTICA POR SECTORES" : "ENTRENAMIENTO") : "EXAMEN";
+                 case CoursePhaseV5.Results:   return "RESULTADOS";
+                 default: return "";
+             }
+--- Antes/Assets\FrankaVR\V5\Course\TrainingWorkpieceFactoryV5.cs
+
++++ Assets\FrankaVR\V5\Course\TrainingWorkpieceFactoryV5.cs
+
+@@ -47,6 +47,23 @@
+
+         public Transform CurrentRoot => _root;
+         public Vector3 WorkCenter => _referenceCenter;
+         public float WorkTopY => _referenceTopY;
++        public float PipeRotationDegrees { get; private set; }
++
++        public bool IndexPipe(float degrees)
++        {
++            if (_root == null || _circleCenter == null || Seam == null || Seam.Shape != SeamShape.Circle) return false;
++            Vector3 center = _circleCenter.position;
++            foreach (Transform part in _root)
++            {
++                if (part.name.StartsWith("Pipe_", System.StringComparison.Ordinal) ||
++                    part.name.StartsWith("PipeCut_", System.StringComparison.Ordinal))
++                    part.RotateAround(center, Seam.CircleAxis.normalized, degrees);
++            }
++            Seam.RotateCircleSamples(degrees);
++            PipeRotationDegrees = Mathf.Repeat(PipeRotationDegrees + degrees, 360f);
++            Physics.SyncTransforms();
++            return true;
++        }
+ 
+         void Awake()
+         {
+@@ -107,6 +124,7 @@
+
+         public void BuildFor(WorkOrder order)
+         {
+             if (order == null) return;
++            PipeRotationDegrees = 0f;
+             ResolveReferenceSurface();
+             ClearGenerated();
+             BuildMaterials();
+--- Antes/ProjectSettings\ProjectSettings.asset
+
++++ ProjectSettings\ProjectSettings.asset
+
+@@ -8,7 +8,7 @@
+
+   AndroidProfiler: 0
+   AndroidFilterTouchesWhenObscured: 0
+   AndroidEnableSustainedPerformanceMode: 0
+-  defaultScreenOrientation: 4
++  defaultScreenOrientation: 3
+   targetDevice: 2
+   useOnDemandResources: 0
+   accelerometerFrequency: 60
+@@ -149,7 +149,8 @@
+
+   visionOSBundleVersion: 1.0
+   tvOSBundleVersion: 1.0
+   bundleVersion: 0.1
+-  preloadedAssets: []
++  preloadedAssets:
++  - {fileID: -944628639613478452, guid: 289c1b55c9541489481df5cc06664110, type: 3}
+   metroInputSource: 0
+   wsaTransparentSwapchain: 0
+   xboxOneDisableKinectGpuReservation: 1
+@@ -178,7 +179,7 @@
+
+   overrideDefaultApplicationIdentifier: 1
+   AndroidBundleVersionCode: 1
+   AndroidMinSdkVersion: 26
+-  AndroidTargetSdkVersion: 0
++  AndroidTargetSdkVersion: 36
+   AndroidPreferredInstallLocation: 1
+   AndroidPreferredDataLocation: 1
+   aotOptions: 
+@@ -442,8 +443,8 @@
+
+     m_GraphicsJobMode: 0
+   m_BuildTargetGraphicsAPIs:
+   - m_BuildTarget: AndroidPlayer
+-    m_APIs: 150000000b000000
+-    m_Automatic: 1
++    m_APIs: 0b000000
++    m_Automatic: 0
+   - m_BuildTarget: iOSSupport
+     m_APIs: 10000000
+     m_Automatic: 1
+@@ -755,6 +756,7 @@
+
+   webWasm2023: 0
+   webEnableSubmoduleStrippingCompatibility: 0
+   scriptingDefineSymbols:
++    Android: SENTIS_ANALYTICS_ENABLED
+     Standalone: SENTIS_ANALYTICS_ENABLED;APP_UI_EDITOR_ONLY
+   additionalCompilerArguments: {}
+   platformArchitecture: {}

@@ -1,0 +1,262 @@
+--- Main antes
+
++++ Main actual
+
+@@ -3533,7 +3533,7 @@
+
+   m_PrefabInstance: {fileID: 0}
+   m_PrefabAsset: {fileID: 0}
+   m_GameObject: {fileID: 324879705}
+-  m_Enabled: 1
++  m_Enabled: 0
+   m_EditorHideFlags: 0
+   m_Script: {fileID: 11500000, guid: ea0dc76666d543b4487e598894057ca6, type: 3}
+   m_Name: 
+@@ -3545,8 +3545,8 @@
+
+   SectionLength: 0.22
+   Gap: 0.006
+   InnerRadiusRatio: 0.72
+-  ActivateN5OnStart: 1
+-  BuildOnStart: 1
++  ActivateN5OnStart: 0
++  BuildOnStart: 0
+   CopyLayerFromChapa: 1
+   SteelColor: {r: 0.3, g: 0.33, b: 0.36, a: 1}
+   CutColor: {r: 0.055, g: 0.06, b: 0.065, a: 1}
+@@ -10280,7 +10280,7 @@
+
+   m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.Welding.WeldingEnvironmentPolish
+   Torch: {fileID: 279761044}
+   Seam: {fileID: 136695604}
+-  Workpiece: {fileID: 324879707}
++  Workpiece: {fileID: 1260853361}
+   ReferenceCamera: {fileID: 963194227}
+   ImproveAmbientLighting: 1
+   AmbientColor: {r: 0.34, g: 0.37, b: 0.42, a: 1}
+@@ -10296,7 +10296,7 @@
+
+   GuideGood: {r: 0.25, g: 1, b: 0.35, a: 0.9}
+   GuideNear: {r: 1, g: 0.72, b: 0.12, a: 0.9}
+   GuideFar: {r: 1, g: 0.2, b: 0.12, a: 0.9}
+-  OutlineWorkpiece: 1
++  OutlineWorkpiece: 0
+   WorkpieceOutlineColor: {r: 0.18, g: 0.65, b: 1, a: 0.55}
+   OutlineWidth: 0.002
+   ShowSeamEndpoints: 1
+@@ -10549,6 +10549,7 @@
+
+   - component: {fileID: 963194228}
+   - component: {fileID: 963194227}
+   - component: {fileID: 963194226}
++  - component: {fileID: 2300000105}
+   m_Layer: 0
+   m_Name: Main Camera
+   m_TagString: MainCamera
+@@ -14348,7 +14349,7 @@
+
+   InputSource: {fileID: 406795550}
+   Ik: {fileID: 1239870181}
+   Torch: {fileID: 279761044}
+-  Machine: {fileID: 0}
++  Machine: {fileID: 224278173}
+   Helmet: {fileID: 214503724}
+   Task: {fileID: 2122032870}
+   ReferenceCamera: {fileID: 963194227}
+@@ -14368,7 +14369,7 @@
+
+   MarkerRadius: 0.012
+   PositionSmoothTime: 0.05
+   LogDiagnostics: 0
+-  AutoStartTask: 1
++  AutoStartTask: 0
+ --- !u!114 &1348903087
+ MonoBehaviour:
+   m_ObjectHideFlags: 0
+@@ -19083,12 +19084,12 @@
+
+   m_Name: 
+   m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.Welding.WeldBeadRenderer
+   Seam: {fileID: 136695604}
+-  RingSegments: 6
++  RingSegments: 10
+   MinHalfWidth: 0.0045
+   MaxHalfWidth: 0.009
+   MinHeight: 0.0014
+   MaxHeight: 0.0032
+-  Lift: 0.0012
++  Lift: 0.0008
+   VisibleEnergyJ: 1
+   RippleStrength: 0.13
+   RippleFrequency: 0.85
+@@ -19408,6 +19409,10 @@
+
+   - component: {fileID: 1885361076}
+   - component: {fileID: 1885361075}
+   - component: {fileID: 1885361074}
++  - component: {fileID: 2300000101}
++  - component: {fileID: 2300000102}
++  - component: {fileID: 2300000103}
++  - component: {fileID: 2300000104}
+   m_Layer: 0
+   m_Name: VRSystem
+   m_TagString: Untagged
+@@ -19424,9 +19429,17 @@
+
+   m_GameObject: {fileID: 1885361072}
+   m_Enabled: 1
+   m_EditorHideFlags: 0
+-  m_Script: {fileID: 11500000, guid: 0027b5d8eae4069459ebb68f5a932fa6, type: 3}
++  m_Script: {fileID: 11500000, guid: f937e1435dd74cf4c92d3e98cd5f9597, type: 3}
+   m_Name: 
+   m_EditorClassIdentifier: Assembly-CSharp::ViewpointManager
++  playerCamera: {fileID: 963194227}
++  rigRoot: {fileID: 158251082}
++  AutoCreateRigRoot: 1
++  RecenterOnStationChange: 0
++  stations: []
++  fadeSeconds: 0.16
++  KeyboardControls: 1
++  GamepadControls: 1
+ --- !u!114 &1885361074
+ MonoBehaviour:
+   m_ObjectHideFlags: 0
+@@ -19482,7 +19495,7 @@
+
+   m_EditorClassIdentifier: Assembly-CSharp::CourseViewAutoSetup
+   Viewpoints: {fileID: 1885361073}
+   PlayerCamera: {fileID: 963194227}
+-  Focus: {fileID: 324879707}
++  Focus: {fileID: 1260853361}
+   LateralAngleDeg: 62
+   IsoAngleDeg: -48
+   IsoExtraHeight: 0.35
+@@ -21758,6 +21771,127 @@
+
+   m_Script: {fileID: 11500000, guid: 46398bc5d6905ad429a6d2d973afe002, type: 3}
+   m_Name: 
+   m_EditorClassIdentifier: Unity.Robotics.UrdfImporter::Unity.Robotics.UrdfImporter.UrdfCollisions
++--- !u!114 &2300000101
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: de68edfdaae970c45808b8ab4646180a, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V5.CourseTrainingManagerV5
++  Task: {fileID: 2122032870}
++  Workpieces: {fileID: 2300000102}
++  Guidance: {fileID: 916683156}
++  PrepareOnStart: 1
++  SelectedExercise: 0
++  Mode: 0
++  KeyboardShortcuts: 1
++  Phase: 0
++  CurrentOrderId: N1
++--- !u!114 &2300000102
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 0ffdd9fcc43c1ef4fbf73ea3b6d37798, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V5.TrainingWorkpieceFactoryV5
++  Seam: {fileID: 136695604}
++  LegacyChapa: {fileID: 1260853361}
++  CustomOrigin: {fileID: 0}
++  HideLegacyChapa: 1
++  BuildOnStart: 0
++  InitialOrderId: N1
++  PlateLength: 0.32
++  PlateWidth: 0.18
++  ButtGap: 0.004
++  PipeSectionLength: 0.18
++  PipeGap: 0.005
++  PipeInnerRatio: 0.82
++  LineSamples: 60
++  CircleSamples: 84
++  SteelColor: {r: 0.30, g: 0.32, b: 0.35, a: 1}
++  EdgeColor: {r: 0.10, g: 0.11, b: 0.12, a: 1}
++  SupportColor: {r: 0.16, g: 0.18, b: 0.20, a: 1}
++--- !u!114 &2300000103
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 325cf56a0298d5f46aca67092ea02f83, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V6.VRTrainingHUDV6
++  PlayerCamera: {fileID: 963194227}
++  Course: {fileID: 2300000101}
++  Task: {fileID: 2122032870}
++  Torch: {fileID: 279761044}
++  Machine: {fileID: 224278173}
++  HybridInput: {fileID: 406795550}
++  Viewpoints: {fileID: 1885361073}
++  Navigator: {fileID: 2300000105}
++  Distance: 1.55
++  VerticalOffset: -0.50
++  HorizontalOffset: 0.60
++  Width: 1.18
++  Height: 0.35
++  ShowHelpDuringRunning: 0
++--- !u!114 &2300000104
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 81e936014b2a9f443981d0f192274852, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V6.CourseWorldMenuV6
++  Course: {fileID: 2300000101}
++  PlayerCamera: {fileID: 963194227}
++  Distance: 1.8
++  SideOffset: -0.82
++  VerticalOffset: 0.18
++  FollowCameraYaw: 1
++  HideWhileRunning: 1
++--- !u!114 &2300000105
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 963194225}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: f1ab3f711f98b6b4e89c4293463a61bf, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V6.DesktopNavigatorV6
++  PlayerCamera: {fileID: 963194227}
++  RigRoot: {fileID: 158251082}
++  EnableOnDesktop: 1
++  MoveSpeed: 0.85
++  FastMultiplier: 2.5
++  UpKey: 273
++  DownKey: 274
++  LeftKey: 276
++  RightKey: 275
++  AscendKey: 280
++  DescendKey: 281
++  MouseSensitivity: 2.1
++  MinPitch: -70
++  MaxPitch: 75
+ --- !u!1660057539 &9223372036854775807
+ SceneRoots:
+   m_ObjectHideFlags: 0

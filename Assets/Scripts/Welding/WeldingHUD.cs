@@ -2,14 +2,10 @@ using UnityEngine;
 
 namespace FrankaVR.Welding
 {
-    /// Paneles informativos en el mundo 3D (TextMesh, no Canvas): en Cardboard el texto
-    /// pegado a la camara marea y se ve mal, asi que la informacion vive sobre la maquina
-    /// de soldar, igual que en un taller real.
-    ///
-    /// Tres paneles:
-    ///   MachinePanel  -> regulacion: amperaje, electrodo, termico, estado del arco
-    ///   BriefPanel    -> la orden de trabajo y la norma a cumplir
-    ///   ResultPanel   -> el informe al terminar
+    /// <summary>
+    /// Paneles informativos en el mundo 3D.
+    /// Primera mejora de entorno: informacion mas clara para operar la celda sin abrir la consola.
+    /// </summary>
     public class WeldingHUD : MonoBehaviour
     {
         [Header("Referencias")]
@@ -23,15 +19,17 @@ namespace FrankaVR.Welding
         public TextMesh ResultPanel;
 
         [Header("Colores")]
-        public Color OkColor    = new Color(0.55f, 0.95f, 0.55f);
-        public Color WarnColor  = new Color(1f, 0.75f, 0.25f);
-        public Color BadColor   = new Color(1f, 0.4f, 0.35f);
+        public Color OkColor   = new Color(0.55f, 0.95f, 0.55f);
+        public Color WarnColor = new Color(1f, 0.75f, 0.25f);
+        public Color BadColor  = new Color(1f, 0.4f, 0.35f);
+
+        [Header("Opciones")]
+        public bool ShowControlsHint = true;
 
         float _refresh;
 
         void Update()
         {
-            // Refrescar 10 veces por segundo alcanza y ahorra bateria en el celular.
             _refresh += Time.deltaTime;
             if (_refresh < 0.1f) return;
             _refresh = 0f;
@@ -56,12 +54,22 @@ namespace FrankaVR.Welding
             {
                 s += "\nARCO\n";
                 s += "Estado:     " + Torch.StateLabel() + "\n";
-                s += "Long. arco: " + (Torch.ArcLenMm >= Torch.MaxArcRayMm ? "--" : Torch.ArcLenMm.ToString("0.0") + " mm")
-                   + "   (ideal " + e.ArcLenIdealMm.ToString("0.0") + ")\n";
-                s += "Varilla:    " + (Torch.RemainingFrac * 100f).ToString("0") + " %\n";
+                string arcText = Torch.HasArcSurface
+                    ? Torch.ArcLenMm.ToString("0.0") + " mm"
+                    : "> " + Torch.MeasureRangeMm.ToString("0") + " mm";
+                s += "Long. arco: " + arcText + "   (ideal " + e.ArcLenIdealMm.ToString("0.0") + ")\n";
+                s += "Varilla:    " + Torch.RemainingMm.ToString("0") + " mm  (" + (Torch.RemainingFrac * 100f).ToString("0") + " %)\n";
+                s += "Limite arco:" + Torch.MaxArcLenMm.ToString("0") + " mm\n";
             }
 
             s += "\n" + Machine.RegulationHint();
+            if (ShowControlsHint)
+            {
+                s += "\n\nControles:\n";
+                s += "Q/E bajar-subir | Space arco | R reponer | Tab cambiar electrodo\n";
+                s += "[ / ] corriente | H careta | V enderezar";
+            }
+
             MachinePanel.text = s;
 
             if (Machine.ThermalTripped || (Torch != null && Torch.Stuck)) MachinePanel.color = BadColor;
@@ -77,12 +85,12 @@ namespace FrankaVR.Welding
             string s = "ORDEN " + o.Id + "\n" + o.Title + "\n\n";
             s += o.Brief + "\n\n";
             s += "NORMA\n";
-            s += "Espesor:          " + o.ThicknessMm.ToString("0.0") + " mm\n";
-            s += "Angulo de avance: " + o.IdealTravelAngle.ToString("0") + " deg\n";
-            s += "Angulo de trabajo:" + o.IdealWorkAngle.ToString("0") + " deg\n";
-            s += "Tolerancia:       +/- " + o.AngleToleranceDeg.ToString("0") + " deg\n";
-            s += "Recomendado:      " + o.RecommendedElectrode + " a " + o.RecommendedAmps.ToString("0") + " A\n";
-            s += "Aprueba con:      " + o.MinScoreToPass.ToString("0") + " / 100\n";
+            s += "Espesor:           " + o.ThicknessMm.ToString("0.0") + " mm\n";
+            s += "Angulo de avance:  " + o.IdealTravelAngle.ToString("0") + " deg\n";
+            s += "Angulo de trabajo: " + o.IdealWorkAngle.ToString("0") + " deg\n";
+            s += "Tolerancia:        +/- " + o.AngleToleranceDeg.ToString("0") + " deg\n";
+            s += "Recomendado:       " + o.RecommendedElectrode + " a " + o.RecommendedAmps.ToString("0") + " A\n";
+            s += "Aprueba con:       " + o.MinScoreToPass.ToString("0") + " / 100\n";
 
             if (Task.State == SessionState.Running)
             {
@@ -95,7 +103,11 @@ namespace FrankaVR.Welding
         void UpdateResultPanel()
         {
             if (ResultPanel == null || Task == null) return;
-            if (Task.State != SessionState.Finished) { ResultPanel.text = ""; return; }
+            if (Task.State != SessionState.Finished)
+            {
+                ResultPanel.text = "";
+                return;
+            }
             ResultPanel.text = Task.ReportText();
             ResultPanel.color = Task.Passed() ? OkColor : BadColor;
         }

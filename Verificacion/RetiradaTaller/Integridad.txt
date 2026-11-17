@@ -1,0 +1,11 @@
+Modificado: Assets/Scripts/Welding/WeldingTeleopController.cs
+Modificado: Assets/Scripts/Welding/WeldingEnvironmentPolish.cs
+Modificado: Assets/Editor/FrankaVRProjectChecks.cs
+Metas previos preservados: True
+Assets/Main.unity: True
+Assets/Scripts/PandaIK.cs: True
+Assets/Scripts/PandaArm.cs: True
+Assets/Scripts/Welding/WeldingTorch.cs: True
+Assets/Scripts/Welding/WeldingTaskManager.cs: True
+Packages/manifest.json: True
+GUID duplicados: []

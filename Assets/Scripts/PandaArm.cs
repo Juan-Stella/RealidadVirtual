@@ -73,6 +73,13 @@ public class PandaArm : MonoBehaviour
             if (Valid(i)) target[i] = Mathf.Clamp(CurrentDeg(i), Limits[i].x, Limits[i].y);
     }
 
+    /// <summary>Detiene una orden bloqueada sin mandar el brazo a otra pose.</summary>
+    public void HoldActualPose()
+    {
+        SyncTargetsToActual();
+        ApplyTargets();
+    }
+
     /// <summary>Eje de rotacion de la junta i, en coordenadas de mundo.</summary>
     public Vector3 AxisWorld(int i) =>
         Valid(i) ? joints[i].transform.rotation * (joints[i].anchorRotation * Vector3.right) : Vector3.up;

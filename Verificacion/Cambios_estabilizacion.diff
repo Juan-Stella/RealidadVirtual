@@ -1,0 +1,1495 @@
+--- Antes/Assets\Main.unity
+
++++ Assets\Main.unity
+
+@@ -3533,7 +3533,7 @@
+
+   m_PrefabInstance: {fileID: 0}
+   m_PrefabAsset: {fileID: 0}
+   m_GameObject: {fileID: 324879705}
+-  m_Enabled: 1
++  m_Enabled: 0
+   m_EditorHideFlags: 0
+   m_Script: {fileID: 11500000, guid: ea0dc76666d543b4487e598894057ca6, type: 3}
+   m_Name: 
+@@ -3545,8 +3545,8 @@
+
+   SectionLength: 0.22
+   Gap: 0.006
+   InnerRadiusRatio: 0.72
+-  ActivateN5OnStart: 1
+-  BuildOnStart: 1
++  ActivateN5OnStart: 0
++  BuildOnStart: 0
+   CopyLayerFromChapa: 1
+   SteelColor: {r: 0.3, g: 0.33, b: 0.36, a: 1}
+   CutColor: {r: 0.055, g: 0.06, b: 0.065, a: 1}
+@@ -10280,7 +10280,7 @@
+
+   m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.Welding.WeldingEnvironmentPolish
+   Torch: {fileID: 279761044}
+   Seam: {fileID: 136695604}
+-  Workpiece: {fileID: 324879707}
++  Workpiece: {fileID: 1260853361}
+   ReferenceCamera: {fileID: 963194227}
+   ImproveAmbientLighting: 1
+   AmbientColor: {r: 0.34, g: 0.37, b: 0.42, a: 1}
+@@ -10296,7 +10296,7 @@
+
+   GuideGood: {r: 0.25, g: 1, b: 0.35, a: 0.9}
+   GuideNear: {r: 1, g: 0.72, b: 0.12, a: 0.9}
+   GuideFar: {r: 1, g: 0.2, b: 0.12, a: 0.9}
+-  OutlineWorkpiece: 1
++  OutlineWorkpiece: 0
+   WorkpieceOutlineColor: {r: 0.18, g: 0.65, b: 1, a: 0.55}
+   OutlineWidth: 0.002
+   ShowSeamEndpoints: 1
+@@ -10549,6 +10549,7 @@
+
+   - component: {fileID: 963194228}
+   - component: {fileID: 963194227}
+   - component: {fileID: 963194226}
++  - component: {fileID: 2300000105}
+   m_Layer: 0
+   m_Name: Main Camera
+   m_TagString: MainCamera
+@@ -14348,7 +14349,7 @@
+
+   InputSource: {fileID: 406795550}
+   Ik: {fileID: 1239870181}
+   Torch: {fileID: 279761044}
+-  Machine: {fileID: 0}
++  Machine: {fileID: 224278173}
+   Helmet: {fileID: 214503724}
+   Task: {fileID: 2122032870}
+   ReferenceCamera: {fileID: 963194227}
+@@ -14368,7 +14369,7 @@
+
+   MarkerRadius: 0.012
+   PositionSmoothTime: 0.05
+   LogDiagnostics: 0
+-  AutoStartTask: 1
++  AutoStartTask: 0
+ --- !u!114 &1348903087
+ MonoBehaviour:
+   m_ObjectHideFlags: 0
+@@ -19083,12 +19084,12 @@
+
+   m_Name: 
+   m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.Welding.WeldBeadRenderer
+   Seam: {fileID: 136695604}
+-  RingSegments: 6
++  RingSegments: 10
+   MinHalfWidth: 0.0045
+   MaxHalfWidth: 0.009
+   MinHeight: 0.0014
+   MaxHeight: 0.0032
+-  Lift: 0.0012
++  Lift: 0.0008
+   VisibleEnergyJ: 1
+   RippleStrength: 0.13
+   RippleFrequency: 0.85
+@@ -19408,6 +19409,10 @@
+
+   - component: {fileID: 1885361076}
+   - component: {fileID: 1885361075}
+   - component: {fileID: 1885361074}
++  - component: {fileID: 2300000101}
++  - component: {fileID: 2300000102}
++  - component: {fileID: 2300000103}
++  - component: {fileID: 2300000104}
+   m_Layer: 0
+   m_Name: VRSystem
+   m_TagString: Untagged
+@@ -19424,9 +19429,17 @@
+
+   m_GameObject: {fileID: 1885361072}
+   m_Enabled: 1
+   m_EditorHideFlags: 0
+-  m_Script: {fileID: 11500000, guid: 0027b5d8eae4069459ebb68f5a932fa6, type: 3}
++  m_Script: {fileID: 11500000, guid: f937e1435dd74cf4c92d3e98cd5f9597, type: 3}
+   m_Name: 
+   m_EditorClassIdentifier: Assembly-CSharp::ViewpointManager
++  playerCamera: {fileID: 963194227}
++  rigRoot: {fileID: 158251082}
++  AutoCreateRigRoot: 1
++  RecenterOnStationChange: 0
++  stations: []
++  fadeSeconds: 0.16
++  KeyboardControls: 1
++  GamepadControls: 1
+ --- !u!114 &1885361074
+ MonoBehaviour:
+   m_ObjectHideFlags: 0
+@@ -19482,7 +19495,7 @@
+
+   m_EditorClassIdentifier: Assembly-CSharp::CourseViewAutoSetup
+   Viewpoints: {fileID: 1885361073}
+   PlayerCamera: {fileID: 963194227}
+-  Focus: {fileID: 324879707}
++  Focus: {fileID: 1260853361}
+   LateralAngleDeg: 62
+   IsoAngleDeg: -48
+   IsoExtraHeight: 0.35
+@@ -21758,6 +21771,127 @@
+
+   m_Script: {fileID: 11500000, guid: 46398bc5d6905ad429a6d2d973afe002, type: 3}
+   m_Name: 
+   m_EditorClassIdentifier: Unity.Robotics.UrdfImporter::Unity.Robotics.UrdfImporter.UrdfCollisions
++--- !u!114 &2300000101
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: de68edfdaae970c45808b8ab4646180a, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V5.CourseTrainingManagerV5
++  Task: {fileID: 2122032870}
++  Workpieces: {fileID: 2300000102}
++  Guidance: {fileID: 916683156}
++  PrepareOnStart: 1
++  SelectedExercise: 0
++  Mode: 0
++  KeyboardShortcuts: 1
++  Phase: 0
++  CurrentOrderId: N1
++--- !u!114 &2300000102
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 0ffdd9fcc43c1ef4fbf73ea3b6d37798, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V5.TrainingWorkpieceFactoryV5
++  Seam: {fileID: 136695604}
++  LegacyChapa: {fileID: 1260853361}
++  CustomOrigin: {fileID: 0}
++  HideLegacyChapa: 1
++  BuildOnStart: 0
++  InitialOrderId: N1
++  PlateLength: 0.32
++  PlateWidth: 0.18
++  ButtGap: 0.004
++  PipeSectionLength: 0.18
++  PipeGap: 0.005
++  PipeInnerRatio: 0.82
++  LineSamples: 60
++  CircleSamples: 84
++  SteelColor: {r: 0.30, g: 0.32, b: 0.35, a: 1}
++  EdgeColor: {r: 0.10, g: 0.11, b: 0.12, a: 1}
++  SupportColor: {r: 0.16, g: 0.18, b: 0.20, a: 1}
++--- !u!114 &2300000103
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 325cf56a0298d5f46aca67092ea02f83, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V6.VRTrainingHUDV6
++  PlayerCamera: {fileID: 963194227}
++  Course: {fileID: 2300000101}
++  Task: {fileID: 2122032870}
++  Torch: {fileID: 279761044}
++  Machine: {fileID: 224278173}
++  HybridInput: {fileID: 406795550}
++  Viewpoints: {fileID: 1885361073}
++  Navigator: {fileID: 2300000105}
++  Distance: 1.55
++  VerticalOffset: -0.50
++  HorizontalOffset: 0.60
++  Width: 1.18
++  Height: 0.35
++  ShowHelpDuringRunning: 0
++--- !u!114 &2300000104
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 1885361072}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: 81e936014b2a9f443981d0f192274852, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V6.CourseWorldMenuV6
++  Course: {fileID: 2300000101}
++  PlayerCamera: {fileID: 963194227}
++  Distance: 1.8
++  SideOffset: -0.82
++  VerticalOffset: 0.18
++  FollowCameraYaw: 1
++  HideWhileRunning: 1
++--- !u!114 &2300000105
++MonoBehaviour:
++  m_ObjectHideFlags: 0
++  m_CorrespondingSourceObject: {fileID: 0}
++  m_PrefabInstance: {fileID: 0}
++  m_PrefabAsset: {fileID: 0}
++  m_GameObject: {fileID: 963194225}
++  m_Enabled: 1
++  m_EditorHideFlags: 0
++  m_Script: {fileID: 11500000, guid: f1ab3f711f98b6b4e89c4293463a61bf, type: 3}
++  m_Name: 
++  m_EditorClassIdentifier: Assembly-CSharp::FrankaVR.V6.DesktopNavigatorV6
++  PlayerCamera: {fileID: 963194227}
++  RigRoot: {fileID: 158251082}
++  EnableOnDesktop: 1
++  MoveSpeed: 0.85
++  FastMultiplier: 2.5
++  UpKey: 273
++  DownKey: 274
++  LeftKey: 276
++  RightKey: 275
++  AscendKey: 280
++  DescendKey: 281
++  MouseSensitivity: 2.1
++  MinPitch: -70
++  MaxPitch: 75
+ --- !u!1660057539 &9223372036854775807
+ SceneRoots:
+   m_ObjectHideFlags: 0
+--- Antes/Assets\Editor\FrankaVRProjectChecks.cs
+
++++ Assets\Editor\FrankaVRProjectChecks.cs
+
+@@ -0,0 +1,275 @@
+
++using System;
++using System.Collections;
++using System.IO;
++using UnityEditor;
++using UnityEditor.SceneManagement;
++using UnityEngine;
++using FrankaVR.Teleop;
++using FrankaVR.Welding;
++using FrankaVR.V5;
++using FrankaVR.V6;
++
++/// <summary>Prueba de integracion en el Editor. No guarda cambios de Play en la escena.</summary>
++[InitializeOnLoad]
++public static class FrankaVRProjectChecks
++{
++    const string RunningKey = "FrankaVR.ProjectChecks.Running";
++    static IEnumerator _steps;
++    static int _lastFrame = -1;
++    static double _deadline;
++
++    static FrankaVRProjectChecks()
++    {
++        if (UnityEditor.SessionState.GetBool(RunningKey, false)) Subscribe();
++    }
++
++    // Unity.exe -batchmode -projectPath ... -executeMethod FrankaVRProjectChecks.RunBatch
++    public static void RunBatch()
++    {
++        EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
++        ValidateScene();
++        UnityEditor.SessionState.SetBool(RunningKey, true);
++        Subscribe();
++        EditorApplication.EnterPlaymode();
++    }
++
++    public static void BuildDesktop()
++    {
++        EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
++        ValidateScene();
++        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
++        {
++            scenes = new[] { "Assets/Main.unity" },
++            locationPathName = "Builds/FrankaVR_PC/FrankaVR.exe",
++            target = BuildTarget.StandaloneWindows64,
++            options = BuildOptions.None
++        });
++        bool success = report.summary.result == UnityEditor.Build.Reporting.BuildResult.Succeeded;
++        Directory.CreateDirectory("Verificacion");
++        File.WriteAllText("Verificacion/Resultado_Build_PC.txt", report.summary.result + "\n" +
++            "Errores: " + report.summary.totalErrors + "\nBytes: " + report.summary.totalSize);
++        EditorApplication.Exit(success ? 0 : 1);
++    }
++
++    static void Subscribe()
++    {
++        _deadline = EditorApplication.timeSinceStartup + 180;
++        EditorApplication.update -= Tick;
++        EditorApplication.update += Tick;
++        Application.logMessageReceived -= OnLog;
++        Application.logMessageReceived += OnLog;
++    }
++
++    static void OnLog(string message, string trace, LogType type)
++    {
++        if (type == LogType.Exception || type == LogType.Error || type == LogType.Assert)
++            Complete(false, message + "\n" + trace);
++    }
++
++    static void Tick()
++    {
++        if (EditorApplication.timeSinceStartup > _deadline)
++        { Complete(false, "Timeout al entrar o ejecutar Play"); return; }
++        if (!EditorApplication.isPlaying || EditorApplication.isPaused || Time.frameCount == _lastFrame) return;
++        _lastFrame = Time.frameCount;
++        try
++        {
++            if (_steps == null) _steps = Smoke();
++            if (!_steps.MoveNext()) Complete(true, "Referencias, curso N1-N5, superficies, CSV, timeouts, cierre de sesion y deposicion N1 verificados.");
++        }
++        catch (Exception ex) { Complete(false, ex.ToString()); }
++    }
++
++    static T One<T>() where T : MonoBehaviour
++    {
++        T[] components = UnityEngine.Object.FindObjectsByType<T>();
++        Require(components.Length == 1, "Se esperaba exactamente un " + typeof(T).Name);
++        return components[0];
++    }
++
++    static void Require(bool condition, string message)
++    {
++        if (!condition) throw new InvalidOperationException(message);
++    }
++
++    static void ValidateScene()
++    {
++        var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
++        foreach (GameObject root in scene.GetRootGameObjects())
++            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
++                Require(GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(child.gameObject) == 0,
++                    "Missing script en " + child.name);
++        var teleop = One<WeldingTeleopController>();
++        var hybrid = One<HybridTeleopInput>();
++        var views = One<ViewpointManager>();
++        Require(teleop.InputSource == hybrid && hybrid.Keyboard != null && hybrid.Glove != null, "Entrada hibrida incompleta");
++        Require(teleop.Ik.endEffector.name == "Soldador" && !teleop.ClampHeight, "Restriccion de IK modificada");
++        Require(teleop.Machine == teleop.Torch.Machine && teleop.Machine != null, "Maquina no enlazada");
++        Require(teleop.MovementReference == views.rigRoot && views.rigRoot != views.playerCamera.transform, "La cabeza no esta separada del cuerpo");
++        Require(!teleop.AutoStartTask && One<CourseTrainingManagerV5>().PrepareOnStart, "Arranque del curso ambiguo");
++        Require(One<DesktopNavigatorV6>().RigRoot == views.rigRoot, "Navegador desconectado del rig");
++        Require(One<VRTrainingHUDV6>().enabled && One<CourseWorldMenuV6>().enabled, "UI principal incompleta");
++    }
++
++    static IEnumerator Smoke()
++    {
++        for (int i = 0; i < 12; i++) yield return null;
++        ValidateScene();
++        var course = One<CourseTrainingManagerV5>();
++        var task = One<WeldingTaskManager>();
++        var torch = One<WeldingTorch>();
++        var teleop = One<WeldingTeleopController>();
++        var hybrid = One<HybridTeleopInput>();
++        var bridge = One<GlovePacketBridge>();
++        var factory = One<TrainingWorkpieceFactoryV5>();
++        Require(course.Phase == CoursePhaseV5.Selection && task.State == FrankaVR.Welding.SessionState.Briefing,
++            "La sesion arranco sin seleccionar modo");
++        Require(!hybrid.GloveMotionActive, "El guante toma control sin paquetes");
++        Require(GameObject.Find("VRTrainingHUDV6_Runtime") != null && GameObject.Find("CourseWorldMenuV6_Runtime") != null, "UI no construida");
++        CheckPanels();
++        Capture("01_seleccion");
++        bridge.OnBleMessage("IMU,NaN,0,0,0,1");
++        bridge.OnBleMessage("IMU,0,0,0,0,1");
++        Require(!hybrid.Glove.HasImuPacket, "Un paquete invalido tomo el control");
++        bridge.OnBleMessage("IMU,1,0,0,0,1");
++        hybrid.Poll(teleop.Ik.endEffector.rotation);
++        Require(hybrid.GloveMotionActive && hybrid.Glove.IsCalibrated, "CSV IMU no llega a la entrada hibrida");
++        float amps = teleop.Machine.Amperage;
++        bridge.OnBleMessage("BTN,0,1,0,0,0,0,0");
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(Mathf.Approximately(teleop.Machine.Amperage, amps + teleop.Machine.AmpStep), "Amperaje no responde al comando");
++        int electrode = teleop.Machine.ElectrodeIndex;
++        bridge.OnBleMessage("BTN,0,0,0,1,0,0,0");
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(teleop.Machine.ElectrodeIndex == (electrode + 1) % teleop.Machine.ElectrodeCount, "Electrodo no cambia");
++        float timeout = Time.unscaledTime + Mathf.Max(hybrid.Glove.PrimaryTimeoutSec, hybrid.Glove.ButtonsTimeoutSec) + 0.1f;
++        while (Time.unscaledTime < timeout) yield return null;
++        Require(!hybrid.GloveMotionActive && !hybrid.Glove.ClutchHeld && !hybrid.Glove.SparkHeld, "Timeout no libera el mando");
++        Debug.Log("[FrankaVR Checks] CSV, comandos y retorno al teclado OK");
++
++        for (int exercise = 0; exercise < 5; exercise++)
++        {
++            course.SelectExercise(exercise);
++            for (int i = 0; i < 3; i++) yield return null;
++            Require(task.WorkOrderId == "N" + (exercise + 1) && task.Seam.Count >= 60, "Orden o costura incorrecta");
++            Require(!factory.LegacyChapa.gameObject.activeSelf, "Chapa antigua solapada");
++            Physics.SyncTransforms();
++            int surfaceHits = 0;
++            for (int i = 0; i < task.Seam.Count; i++)
++            {
++                Vector3 point = task.Seam.PointAt(i);
++                Vector3 normal = task.Seam.NormalAt(i);
++                if (Physics.Raycast(point + normal * 0.03f, -normal, out RaycastHit hit, 0.06f, 1 << 6))
++                {
++                    Require(Vector3.Distance(hit.point, point) < 0.005f, "Superficie separada de la costura " + task.WorkOrderId);
++                    surfaceHits++;
++                }
++            }
++            Require(surfaceHits == task.Seam.Count, "Costura sin superficie soldable: " + task.WorkOrderId + " " + surfaceHits + "/" + task.Seam.Count);
++            if (task.Order.Joint == JointType.FilletT)
++            {
++                int sample = task.Seam.Count / 2;
++                Vector3 normal = task.Seam.NormalAt(sample);
++                Vector3 side = Vector3.Cross(normal, task.Seam.TangentAt(sample)).normalized;
++                float angle = task.Order.IdealWorkAngle * Mathf.Deg2Rad;
++                Vector3 handDirection = normal * Mathf.Cos(angle) + side * Mathf.Sin(angle);
++                Vector3 point = task.Seam.PointAt(sample);
++                Require(Physics.Raycast(point + handDirection * 0.06f, -handDirection, out RaycastHit hit, 0.08f, 1 << 6)
++                    && Vector3.Distance(hit.point, point) < 0.005f, "La chapa vertical bloquea el angulo recomendado de N3");
++            }
++            CheckPanels();
++            Debug.Log("[FrankaVR Checks] " + task.WorkOrderId + " superficie OK: " + surfaceHits + " puntos");
++        }
++        Capture("02_instrucciones_N5");
++
++        course.SelectExercise(0);
++        Require(task.Seam.Count == factory.LineSamples, "N1 hereda la densidad de muestras de N5");
++        course.StartExam();
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(!GameObject.Find("SeamPathGuide").GetComponent<LineRenderer>().enabled, "El examen muestra la guia");
++        course.FinishExercise();
++        bridge.OnBleMessage("BTN,1,0,0,0,0,0,0");
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(!torch.SparkRequested, "El arco se reactiva despues de finalizar");
++        course.BackToMenu();
++        course.StartTraining();
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(task.State == FrankaVR.Welding.SessionState.Running && GameObject.Find("SeamPathGuide").GetComponent<LineRenderer>().enabled, "La practica no muestra su guia");
++
++        // Colocacion controlada para probar arco/deposicion; no valida alcance del IK.
++        teleop.enabled = false;
++        teleop.Ik.enabled = false;
++        // Aislar la herramienta de los ArticulationBody, que siguen asentandose
++        // aunque el solver este detenido. La prueba no cambia el robot guardado.
++        torch.transform.SetParent(null, true);
++        int midpoint = task.Seam.Count / 2;
++        Vector3 weldPoint = task.Seam.PointAt(midpoint);
++        Vector3 weldNormal = task.Seam.NormalAt(midpoint);
++        torch.transform.rotation = Quaternion.FromToRotation(torch.PointingDir, -weldNormal) * torch.transform.rotation;
++        torch.transform.position += weldPoint + weldNormal * 0.00325f - torch.ArcOriginPosition;
++        Physics.SyncTransforms();
++        torch.SetSparkRequested(true);
++        float weldUntil = Time.unscaledTime + 0.9f;
++        while (Time.unscaledTime < weldUntil) yield return null;
++        Capture("03_practica");
++        Require(torch.Arcing && task.Seam.Get(midpoint).Energy > 0f,
++            "No hay deposicion N1: estado=" + torch.State + ", arco=" + torch.ArcLenMm +
++            ", superficie=" + torch.HasArcSurface + ", chispa=" + torch.SparkRequested +
++            ", energia=" + task.Seam.Get(midpoint).Energy);
++        Debug.Log("[FrankaVR Checks] Deposicion N1 OK; energia=" + task.Seam.Get(midpoint).Energy + "; arco=" + torch.ArcLenMm);
++        course.FinishExercise();
++        for (int i = 0; i < 3; i++) yield return null;
++        Require(task.State == FrankaVR.Welding.SessionState.Finished && !torch.SparkRequested, "Finalizacion incorrecta");
++        CheckPanels();
++        Capture("04_resultados");
++    }
++
++    static void CheckPanels()
++    {
++        foreach (TextMesh text in UnityEngine.Object.FindObjectsByType<TextMesh>())
++        {
++            string root = text.transform.root.name;
++            if (root != "VRTrainingHUDV6_Runtime" && root != "CourseWorldMenuV6_Runtime") continue;
++            Vector3 size = text.GetComponent<Renderer>().localBounds.size * text.transform.localScale.x;
++            Require(size.x <= (root.StartsWith("VRTraining") ? 1.18f : 0.90f) + 0.01f, "Texto fuera del panel: " + text.name);
++        }
++    }
++
++    static void Capture(string name)
++    {
++        if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
++        Camera camera = Camera.main;
++        var target = new RenderTexture(1600, 900, 24);
++        var texture = new Texture2D(1600, 900, TextureFormat.RGB24, false);
++        RenderTexture previous = RenderTexture.active;
++        RenderTexture oldTarget = camera.targetTexture;
++        try
++        {
++            camera.targetTexture = target;
++            camera.Render();
++            RenderTexture.active = target;
++            texture.ReadPixels(new Rect(0, 0, 1600, 900), 0, 0);
++            texture.Apply();
++            Directory.CreateDirectory("Verificacion/Capturas");
++            File.WriteAllBytes("Verificacion/Capturas/" + name + ".png", texture.EncodeToPNG());
++        }
++        finally
++        {
++            camera.targetTexture = oldTarget;
++            RenderTexture.active = previous;
++            UnityEngine.Object.DestroyImmediate(texture);
++            UnityEngine.Object.DestroyImmediate(target);
++        }
++    }
++
++    static void Complete(bool success, string message)
++    {
++        UnityEditor.SessionState.SetBool(RunningKey, false);
++        EditorApplication.update -= Tick;
++        Application.logMessageReceived -= OnLog;
++        Directory.CreateDirectory("Verificacion");
++        File.WriteAllText("Verificacion/Resultado_Unity.txt", (success ? "PASS\n" : "FAIL\n") + message);
++        Debug.Log("[FrankaVR Checks] " + (success ? "PASS " : "FAIL ") + message);
++        EditorApplication.Exit(success ? 0 : 1);
++    }
++}
+--- Antes/Assets\Editor\FrankaVRProjectChecks.cs.meta
+
++++ Assets\Editor\FrankaVRProjectChecks.cs.meta
+
+@@ -0,0 +1,11 @@
+
++fileFormatVersion: 2
++guid: 07344199aa014b7196d1b88892620525
++MonoImporter:
++  externalObjects: {}
++  serializedVersion: 2
++  defaultReferences: []
++  executionOrder: 0
++  icon: {instanceID: 0}
++  userData: 
++  assetBundleName: 
++  assetBundleVariant: 
+--- Antes/Assets\Input\GlovePacketBridge.cs
+
++++ Assets\Input\GlovePacketBridge.cs
+
+@@ -13,7 +13,7 @@
+
+     ///
+     /// Formatos CSV soportados:
+     ///   IMU,qw,qx,qy,qz,clutch
+-    ///   BTN,spark,ampPlus,ampMinus,cycle,replace,helmet,recenter,nextView,calibrate
++    ///   BTN,spark,ampPlus,ampMinus,cycle,replace,helmet,resetOrientation[,recenter,nextView,calibrate]
+     ///
+     /// Todos los booleanos pueden ser 0/1 o true/false.
+     /// </summary>
+@@ -53,7 +53,8 @@
+
+ 
+         void ParseImu(string[] p)
+         {
+-            if (Glove == null || p.Length < 6) return;
++            if (Glove == null) return;
++            if (p.Length != 6) throw new FormatException("IMU requiere qw,qx,qy,qz,clutch");
+ 
+             // El protocolo manda qw primero por comodidad del firmware.
+             float qw = F(p[1]);
+@@ -62,12 +63,18 @@
+
+             float qz = F(p[4]);
+             bool clutch = B(p[5]);
+ 
+-            Glove.OnPrimaryGlovePacket(new Quaternion(qx, qy, qz, qw), clutch);
++            Quaternion orientation = new Quaternion(qx, qy, qz, qw);
++            float magnitudeSq = qx*qx + qy*qy + qz*qz + qw*qw;
++            if (float.IsInfinity(magnitudeSq) || magnitudeSq < 1e-8f)
++                throw new FormatException("Cuaternion IMU nulo o fuera de rango");
++            Glove.OnPrimaryGlovePacket(orientation, clutch);
+         }
+ 
+         void ParseButtons(string[] p)
+         {
+-            if (Glove == null || p.Length < 8) return;
++            if (Glove == null) return;
++            if (p.Length < 8 || p.Length > 11)
++                throw new FormatException("BTN requiere 7 botones y hasta 3 acciones opcionales");
+ 
+             bool spark   = B(p[1]);
+             bool ampPlus = B(p[2]);
+@@ -92,13 +99,22 @@
+
+             _prevCalibrate = calibrate;
+         }
+ 
+-        static float F(string s) => float.Parse(s, CultureInfo.InvariantCulture);
++        static float F(string s)
++        {
++            float value = float.Parse(s, CultureInfo.InvariantCulture);
++            if (float.IsNaN(value) || float.IsInfinity(value))
++                throw new FormatException("Numero no finito");
++            return value;
++        }
+ 
+         static bool B(string s)
+         {
+             s = s.Trim();
+-            return s == "1" || s.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+-                   s.Equals("on", StringComparison.OrdinalIgnoreCase);
++            if (s == "1" || s.Equals("true", StringComparison.OrdinalIgnoreCase) ||
++                s.Equals("on", StringComparison.OrdinalIgnoreCase)) return true;
++            if (s == "0" || s.Equals("false", StringComparison.OrdinalIgnoreCase) ||
++                s.Equals("off", StringComparison.OrdinalIgnoreCase)) return false;
++            throw new FormatException("Booleano invalido: " + s);
+         }
+     }
+ }
+--- Antes/Assets\VR\ViewpointManager.cs
+
++++ Assets\VR\ViewpointManager.cs
+
+@@ -74,8 +74,9 @@
+
+             var kb = Keyboard.current;
+             if (kb != null)
+             {
+-                if (kb.nKey.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame) Next();
+-                if (kb.pKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame) Previous();
++                // Las flechas quedan reservadas a DesktopNavigatorV6.
++                if (kb.nKey.wasPressedThisFrame) Next();
++                if (kb.pKey.wasPressedThisFrame) Previous();
+                 if (kb.cKey.wasPressedThisFrame) CardboardRecenterProxy.TryRecenter();
+             }
+         }
+--- Antes/Assets\Scripts\Welding\PipeTrainingWorkpiece.cs
+
++++ Assets\Scripts\Welding\PipeTrainingWorkpiece.cs
+
+@@ -41,7 +41,7 @@
+
+         [ContextMenu("Build Pipe Training Workpiece")]
+         public void Build()
+         {
+-            if (_root != null) Destroy(_root.gameObject);
++            if (_root != null) { _root.gameObject.SetActive(false); SafeDestroy(_root.gameObject); }
+             if (Seam == null) Seam = FindObjectOfType<WeldSeam>();
+             if (Task == null) Task = FindObjectOfType<WeldingTaskManager>();
+ 
+@@ -52,7 +52,7 @@
+
+                 if (chapa != null) _workpieceLayer = chapa.layer;
+             }
+ 
+-            BuildMaterials();
++            if (_steelMat == null) BuildMaterials();
+ 
+             GameObject rootGo = new GameObject("PipeButtTrainingWorkpiece");
+             _root = rootGo.transform;
+@@ -70,6 +70,7 @@
+
+             float xOff = Gap * 0.5f + SectionLength * 0.5f;
+             MakePipeSection("Pipe_Left", centerWorld + Vector3.left * xOff, SectionLength);
+             MakePipeSection("Pipe_Right", centerWorld + Vector3.right * xOff, SectionLength);
++            MakePipeSection("Pipe_JointRoot", centerWorld, Gap);
+ 
+             MakeDarkCutFace("Cut_Left", centerWorld + Vector3.left * (Gap * 0.5f + 0.001f));
+             MakeDarkCutFace("Cut_Right", centerWorld + Vector3.right * (Gap * 0.5f + 0.001f));
+@@ -112,11 +113,11 @@
+
+             go.transform.SetParent(_root, true);
+             go.transform.position = pos;
+             go.transform.rotation = Quaternion.Euler(0f, 0f, 90f); // eje del cilindro -> X
+-            go.transform.localScale = new Vector3(PipeRadius, length * 0.5f, PipeRadius);
++            go.transform.localScale = new Vector3(PipeRadius * 2f, length * 0.5f, PipeRadius * 2f);
+             go.GetComponent<Renderer>().material = _steelMat;
+ 
+             Collider old = go.GetComponent<Collider>();
+-            if (old != null) Destroy(old);
++            if (old != null) { old.enabled = false; SafeDestroy(old); }
+             MeshCollider mc = go.AddComponent<MeshCollider>();
+             mc.sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
+             mc.convex = false;
+@@ -131,10 +132,10 @@
+
+             go.transform.position = pos;
+             go.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
+             float r = PipeRadius * InnerRadiusRatio;
+-            go.transform.localScale = new Vector3(r, 0.001f, r);
++            go.transform.localScale = new Vector3(r * 2f, 0.001f, r * 2f);
+             go.GetComponent<Renderer>().material = _cutMat;
+             Collider c = go.GetComponent<Collider>();
+-            if (c != null) Destroy(c);
++            if (c != null) SafeDestroy(c);
+         }
+ 
+         void MakeSupport(string name, Vector3 pipePos)
+@@ -150,9 +151,15 @@
+
+ 
+         void OnDestroy()
+         {
+-            if (_steelMat != null) Destroy(_steelMat);
+-            if (_cutMat != null) Destroy(_cutMat);
+-            if (_supportMat != null) Destroy(_supportMat);
++            if (_steelMat != null) SafeDestroy(_steelMat);
++            if (_cutMat != null) SafeDestroy(_cutMat);
++            if (_supportMat != null) SafeDestroy(_supportMat);
++        }
++
++        static void SafeDestroy(Object obj)
++        {
++            if (Application.isPlaying) Destroy(obj);
++            else DestroyImmediate(obj);
+         }
+     }
+ }
+--- Antes/Assets\Scripts\Welding\WeldBeadRenderer.cs
+
++++ Assets\Scripts\Welding\WeldBeadRenderer.cs
+
+@@ -48,6 +48,7 @@
+
+         Color[] _cols;
+         int[] _tris;
+         int _cachedPoints = -1, _cachedSegs = -1;
++        bool _cachedClosed;
+ 
+         void Awake()
+         {
+@@ -68,18 +69,20 @@
+
+ 
+         void EnsureBuffers(int points, int segs)
+         {
+-            if (_cachedPoints == points && _cachedSegs == segs) return;
++            bool closed = Seam.Shape == SeamShape.Circle;
++            if (_cachedPoints == points && _cachedSegs == segs && _cachedClosed == closed) return;
+ 
+             int vcount = points * segs;
+-            int tcount = (points - 1) * segs * 6;
++            int spans = closed ? points : points - 1;
++            int tcount = spans * segs * 6;
+             _verts = new Vector3[vcount];
+             _cols = new Color[vcount];
+             _tris = new int[tcount];
+ 
+             int k = 0;
+-            for (int i = 0; i < points - 1; i++)
++            for (int i = 0; i < spans; i++)
+             {
+-                int a = i * segs, b = (i + 1) * segs;
++                int a = i * segs, b = ((i + 1) % points) * segs;
+                 for (int s = 0; s < segs; s++)
+                 {
+                     int s2 = (s + 1) % segs;
+@@ -90,6 +93,7 @@
+
+ 
+             _cachedPoints = points;
+             _cachedSegs = segs;
++            _cachedClosed = closed;
+             if (_mesh != null) _mesh.Clear();
+         }
+ 
+@@ -157,5 +161,12 @@
+
+             _mesh.RecalculateNormals();
+             _mesh.RecalculateBounds();
+         }
++
++        void OnDestroy()
++        {
++            if (_mesh == null) return;
++            if (Application.isPlaying) Destroy(_mesh);
++            else DestroyImmediate(_mesh);
++        }
+     }
+ }
+--- Antes/Assets\Scripts\Welding\WeldingEnvironmentPolish.cs
+
++++ Assets\Scripts\Welding\WeldingEnvironmentPolish.cs
+
+@@ -53,6 +53,9 @@
+
+         GameObject _startMarker, _endMarker;
+         GameObject _fillLightGo;
+         Light _fillLight;
++        bool _guidanceVisible = true;
++
++        public void SetGuidanceVisible(bool visible) => _guidanceVisible = visible;
+ 
+         AmbientMode _oldAmbientMode;
+         Color _oldAmbientLight;
+@@ -229,7 +232,8 @@
+
+                 {
+                     for (int i = 0; i < Seam.Count; i++)
+                         _seamPath.SetPosition(i, Seam.PointAt(i) + Seam.NormalAt(i).normalized * 0.0015f);
+-                    _seamPath.enabled = !Torch || !Torch.Arcing;
++                    _seamPath.loop = Seam.Shape == SeamShape.Circle;
++                    _seamPath.enabled = _guidanceVisible && (!Torch || !Torch.Arcing);
+                 }
+             }
+ 
+@@ -239,12 +243,15 @@
+
+                 if (_startMarker == null || _endMarker == null) BuildSeamMarkers();
+                 if (_startMarker != null) _startMarker.transform.position = Seam.PointAt(0) + Vector3.up * 0.004f;
+                 if (_endMarker != null) _endMarker.transform.position = Seam.PointAt(Seam.Count - 1) + Vector3.up * 0.004f;
+-            }
++                if (_startMarker != null) _startMarker.SetActive(_guidanceVisible);
++                if (_endMarker != null) _endMarker.SetActive(_guidanceVisible && Seam.Shape != SeamShape.Circle);
++            }
++            if (_outline != null) _outline.enabled = _guidanceVisible;
+         }
+ 
+         void UpdateGuide()
+         {
+-            if (_guide == null || !ShowArcGuide || Torch == null)
++            if (_guide == null || !_guidanceVisible || !ShowArcGuide || Torch == null)
+             {
+                 if (_guide != null) _guide.enabled = false;
+                 return;
+--- Antes/Assets\Scripts\Welding\WeldingTeleopController.cs
+
++++ Assets\Scripts\Welding\WeldingTeleopController.cs
+
+@@ -1,3 +1,4 @@
+
++using System.Collections;
+ using UnityEngine;
+ using FrankaVR.Teleop;
+ 
+@@ -67,14 +68,19 @@
+
+             _in = InputSource as ITeleopInput;
+             if (_in == null) Debug.LogError("WeldingTeleopController: InputSource no implementa ITeleopInput");
+ 
++            if (Machine == null && Torch != null) Machine = Torch.Machine;
++
+             if (ReferenceCamera == null) ReferenceCamera = Camera.main;
+             ResolveMovementReference();
+         }
+ 
+-        void Start()
++        IEnumerator Start()
+         {
+             ValidateTcpHierarchy();
+             if (ShowTargetMarker) CreateMarker();
++            // Los generadores preparan pieza y orden en Start. Iniciar despues evita
++            // que LoadWorkOrder deje la sesion en Briefing segun el orden de arranque.
++            yield return null;
+             if (AutoStartTask && Task != null) Task.StartTask();
+         }
+ 
+@@ -165,7 +171,8 @@
+
+                 if (cmd.CycleElectrode) { Machine.CycleElectrode(); if (Torch) Torch.LoadNewElectrode(); }
+                 if (cmd.AmperageStep != 0) Machine.StepAmperage(cmd.AmperageStep);
+             }
+-            if (Torch != null) Torch.SetSparkRequested(cmd.SparkHeld);
++            if (Torch != null)
++                Torch.SetSparkRequested(cmd.SparkHeld && (Task == null || Task.State == SessionState.Running));
+             if (cmd.ReplaceElectrode && Task != null) Task.ReplaceElectrode();
+             if (cmd.ToggleHelmet && Helmet != null) Helmet.ToggleHelmet();
+ 
+--- Antes/Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
+
++++ Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
+
+@@ -38,8 +38,9 @@
+
+ 
+             GameObject bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
+             bg.transform.SetParent(_root, false);
+-            bg.transform.localScale = new Vector3(0.92f, 0.72f, 1f);
++            bg.transform.localScale = new Vector3(1.02f, 0.88f, 1f);
+             SafeDestroy(bg.GetComponent<Collider>());
++            bg.GetComponent<Renderer>().sortingOrder = -10;
+             Shader sh = Shader.Find("Sprites/Default");
+             if (sh != null)
+             {
+@@ -47,10 +48,10 @@
+
+                 bg.GetComponent<Renderer>().sharedMaterial = _bgMat;
+             }
+ 
+-            _title = MakeText("Title", new Vector3(0f, 0.26f, -0.004f), 66, 0.0085f, new Color(0.95f, 0.98f, 1f), TextAnchor.MiddleCenter);
+-            _exercise = MakeText("Exercise", new Vector3(0f, 0.15f, -0.004f), 54, 0.0078f, new Color(0.82f, 0.90f, 1f), TextAnchor.MiddleCenter);
+-            _list = MakeText("List", new Vector3(-0.34f, -0.02f, -0.004f), 48, 0.0065f, new Color(0.85f, 0.90f, 0.95f), TextAnchor.MiddleLeft);
+-            _keys = MakeText("Keys", new Vector3(-0.34f, -0.25f, -0.004f), 42, 0.0062f, new Color(0.70f, 0.78f, 0.87f), TextAnchor.MiddleLeft);
++            _title = MakeText("Title", new Vector3(0f, 0.35f, -0.004f), 66, 0.0085f, new Color(0.95f, 0.98f, 1f), TextAnchor.MiddleCenter);
++            _exercise = MakeText("Exercise", new Vector3(0f, 0.25f, -0.004f), 54, 0.0078f, new Color(0.82f, 0.90f, 1f), TextAnchor.MiddleCenter);
++            _list = MakeText("List", new Vector3(-0.44f, -0.015f, -0.004f), 48, 0.0065f, new Color(0.85f, 0.90f, 0.95f), TextAnchor.MiddleLeft);
++            _keys = MakeText("Keys", new Vector3(-0.44f, -0.32f, -0.004f), 42, 0.0062f, new Color(0.70f, 0.78f, 0.87f), TextAnchor.MiddleLeft);
+         }
+ 
+         TextMesh MakeText(string name, Vector3 localPos, int fontSize, float charSize, Color color, TextAnchor anchor)
+@@ -64,6 +65,7 @@
+
+             tm.fontSize = fontSize;
+             tm.characterSize = charSize;
+             tm.color = color;
++            go.GetComponent<Renderer>().sortingOrder = 10;
+             return tm;
+         }
+ 
+@@ -78,23 +80,26 @@
+
+             Transform cam = PlayerCamera.transform;
+             Vector3 fwd = cam.forward; fwd.y = 0f; if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward; else fwd.Normalize();
+             Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
+-            _root.position = cam.position + fwd * Distance + right * SideOffset + Vector3.up * VerticalOffset;
++            // Mantener el panel en el campo visual tambien cuando la cabeza mira abajo.
++            _root.position = FollowCameraYaw
++                ? cam.position + cam.forward * Distance + cam.right * SideOffset + cam.up * VerticalOffset
++                : cam.position + fwd * Distance + right * SideOffset + Vector3.up * VerticalOffset;
+             _root.rotation = FollowCameraYaw
+-                ? Quaternion.LookRotation(_root.position - cam.position, Vector3.up)
++                ? Quaternion.LookRotation(_root.position - cam.position, cam.up)
+                 : Quaternion.identity;
+             UpdateText();
+         }
+ 
+         void UpdateText()
+         {
+-            _title.text = "CURSO DE SOLDADURA";
++            SetText(_title, "CURSO DE SOLDADURA", 0.88f, 0.055f);
+             if (Course != null && Course.SelectedOrder != null)
+             {
+-                _exercise.text = Course.SelectedOrder.Id + "  ·  " + Course.SelectedOrder.Title + "\n" + Course.PhaseLabel();
++                SetText(_exercise, Course.SelectedOrder.Id + "  ·  " + Course.SelectedOrder.Title + "\n" + Course.PhaseLabel(), 0.88f, 0.085f);
+             }
+-            else _exercise.text = "Seleccione un ejercicio";
++            else SetText(_exercise, "Seleccione un ejercicio", 0.88f, 0.085f);
+ 
+-            _list.text =
++            string body =
+                 "EJERCICIOS\n" +
+                 BuildExerciseLine(0, "N1  Placa") + "\n" +
+                 BuildExerciseLine(1, "N2  Tope") + "\n" +
+@@ -102,18 +107,49 @@
+
+                 BuildExerciseLine(3, "N4  Solape") + "\n" +
+                 BuildExerciseLine(4, "N5  Caño a tope");
+ 
+-            _keys.text =
+-                "ATAJOS\n" +
+-                "1-5  Elegir ejercicio\n" +
+-                "T    Entrenamiento\n" +
+-                "Y    Examen\n" +
+-                "F    Finalizar\n" +
+-                "M    Volver al menu\n" +
+-                "\nMOVERSE EN EL ESPACIO\n" +
+-                "Flechas  Desplazar\n" +
+-                "RePag/AvPag  Subir/Bajar\n" +
+-                "Shift  Rapido\n" +
+-                "Mouse derecho  Mirar";
++            if (Course != null && Course.Phase == CoursePhaseV5.Briefing && Course.SelectedOrder != null)
++            {
++                WorkOrder order = Course.SelectedOrder;
++                body = Wrap(order.Brief, 45) + "\n\n" + order.RecommendedElectrode + " · " + order.RecommendedAmps.ToString("0") + " A";
++            }
++            if (Course != null && Course.Phase == CoursePhaseV5.Results && Course.Task != null)
++            {
++                WeldingTaskManager task = Course.Task;
++                body = "Nota: " + task.FinalScore.ToString("0") + "/100\n" +
++                    "Tiempo: " + task.Elapsed.ToString("0") + " s · Varillas: " + task.ElectrodesUsed + "\n" +
++                    "Correctos: " + task.GoodPoints + " · Sin soldar: " + task.UntouchedPoints + "\n" +
++                    "Falta de fusion: " + task.ColdPoints + "\n" +
++                    "Perforacion: " + task.BurnPoints + " · Socavado: " + task.UndercutPoints + "\n" +
++                    "Porosidad: " + task.PorosityPoints;
++            }
++            SetText(_list, body, 0.88f, 0.34f);
++            SetText(_keys, "1–5: elegir · T: practicar · Y: examen · M: menu\n" +
++                "Flechas/Pag: moverse · Mouse der.: mirar\nN/P: estaciones · C: recentrar", 0.88f, 0.10f);
++        }
++
++        static string Wrap(string value, int columns)
++        {
++            var result = new System.Text.StringBuilder();
++            int lineLength = 0;
++            foreach (string word in value.Split(' '))
++            {
++                if (lineLength > 0 && lineLength + word.Length + 1 > columns)
++                { result.Append('\n'); lineLength = 0; }
++                if (lineLength > 0) { result.Append(' '); lineLength++; }
++                result.Append(word); lineLength += word.Length;
++            }
++            return result.ToString();
++        }
++
++        static void SetText(TextMesh text, string value, float width, float height)
++        {
++            if (text.text == value) return;
++            text.text = value;
++            text.transform.localScale = Vector3.one;
++            Bounds bounds = text.GetComponent<Renderer>().localBounds;
++            float scale = Mathf.Min(1f, width / Mathf.Max(0.001f, bounds.size.x),
++                height / Mathf.Max(0.001f, bounds.size.y));
++            text.transform.localScale = Vector3.one * scale;
+         }
+ 
+         string BuildExerciseLine(int idx, string label)
+@@ -129,6 +165,10 @@
+
+             else DestroyImmediate(obj);
+         }
+ 
+-        void OnDestroy() { if (_bgMat != null) SafeDestroy(_bgMat); }
++        void OnDestroy()
++        {
++            if (_root != null) SafeDestroy(_root.gameObject);
++            if (_bgMat != null) SafeDestroy(_bgMat);
++        }
+     }
+ }
+--- Antes/Assets\FrankaVR\V6\VR\DesktopNavigatorV6.cs
+
++++ Assets\FrankaVR\V6\VR\DesktopNavigatorV6.cs
+
+@@ -79,6 +79,7 @@
+
+             if (Input.GetKey(AscendKey)) move += Vector3.up;
+             if (Input.GetKey(DescendKey)) move += Vector3.down;
+             if (move.sqrMagnitude < 1e-6f) return;
++            move = Vector3.ClampMagnitude(move, 1f);
+ 
+             float speed = MoveSpeed * (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) ? FastMultiplier : 1f);
+ 
+@@ -95,6 +96,10 @@
+
+         void RotateLook()
+         {
+             if (!Input.GetMouseButton(1)) return;
++            // Releer la pose evita saltos si otra accion recentro la vista.
++            Vector3 current = PlayerCamera.transform.localEulerAngles;
++            _yaw = Normalize(current.y);
++            _pitch = Normalize(current.x);
+             _yaw += Input.GetAxis("Mouse X") * MouseSensitivity;
+             _pitch -= Input.GetAxis("Mouse Y") * MouseSensitivity;
+             _pitch = Mathf.Clamp(_pitch, MinPitch, MaxPitch);
+--- Antes/Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
+
++++ Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
+
+@@ -23,6 +23,7 @@
+
+         [Header("Posicion")]
+         public float Distance = 1.55f;
+         public float VerticalOffset = -0.32f;
++        public float HorizontalOffset = 0.60f;
+         public float Width = 1.18f;
+         public float Height = 0.35f;
+         [Tooltip("Durante la soldadura oculta la linea larga de ayuda para no ensuciar la vista.")]
+@@ -63,14 +64,16 @@
+
+             bg.transform.localScale = new Vector3(Width, Height, 1f);
+             SafeDestroy(bg.GetComponent<Collider>());
+             _bg = bg.GetComponent<Renderer>();
++            _bg.sortingOrder = -10;
+ 
+             GameObject alertBox = GameObject.CreatePrimitive(PrimitiveType.Quad);
+             alertBox.name = "HUD_AlertBox";
+             alertBox.transform.SetParent(_root, false);
+-            alertBox.transform.localPosition = new Vector3(0f, -0.10f, -0.001f);
+-            alertBox.transform.localScale = new Vector3(Width * 0.92f, 0.10f, 1f);
++            alertBox.transform.localPosition = new Vector3(0f, -0.128f, -0.001f);
++            alertBox.transform.localScale = new Vector3(Width * 0.92f, 0.075f, 1f);
+             SafeDestroy(alertBox.GetComponent<Collider>());
+             _alertBg = alertBox.GetComponent<Renderer>();
++            _alertBg.sortingOrder = -9;
+ 
+             Shader sh = Shader.Find("Sprites/Default");
+             if (sh != null)
+@@ -81,10 +84,10 @@
+
+                 _alertBg.sharedMaterial = _alertMat;
+             }
+ 
+-            _headline = MakeText("Headline", new Vector3(0f, 0.10f, -0.004f), 56, 0.0087f, new Color(0.94f, 0.97f, 1f), TextAnchor.MiddleCenter);
+-            _metrics  = MakeText("Metrics",  new Vector3(0f, 0.01f, -0.004f), 52, 0.0078f, new Color(0.82f, 0.89f, 0.98f), TextAnchor.MiddleCenter);
+-            _help     = MakeText("Help",     new Vector3(0f, -0.04f, -0.004f), 42, 0.0062f, new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter);
+-            _alert    = MakeText("Alert",    new Vector3(0f, -0.10f, -0.005f), 58, 0.0082f, new Color(1f, 0.84f, 0.32f), TextAnchor.MiddleCenter);
++            _headline = MakeText("Headline", new Vector3(0f, 0.12f, -0.004f), 56, 0.0087f, new Color(0.94f, 0.97f, 1f), TextAnchor.MiddleCenter);
++            _metrics  = MakeText("Metrics",  new Vector3(0f, 0.035f, -0.004f), 52, 0.0078f, new Color(0.82f, 0.89f, 0.98f), TextAnchor.MiddleCenter);
++            _help     = MakeText("Help",     new Vector3(0f, -0.052f, -0.004f), 42, 0.0062f, new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter);
++            _alert    = MakeText("Alert",    new Vector3(0f, -0.128f, -0.005f), 58, 0.0082f, new Color(1f, 0.84f, 0.32f), TextAnchor.MiddleCenter);
+         }
+ 
+         TextMesh MakeText(string name, Vector3 localPos, int fontSize, float charSize, Color color, TextAnchor anchor)
+@@ -98,6 +101,7 @@
+
+             tm.fontSize = fontSize;
+             tm.characterSize = charSize;
+             tm.color = color;
++            go.GetComponent<Renderer>().sortingOrder = 10;
+             return tm;
+         }
+ 
+@@ -105,7 +109,7 @@
+
+         {
+             if (_root == null || PlayerCamera == null) return;
+             Transform cam = PlayerCamera.transform;
+-            _root.position = cam.position + cam.forward * Distance + cam.up * VerticalOffset;
++            _root.position = cam.position + cam.forward * Distance + cam.up * VerticalOffset + cam.right * HorizontalOffset;
+             _root.rotation = Quaternion.LookRotation(_root.position - cam.position, cam.up);
+             UpdateText();
+         }
+@@ -113,31 +117,34 @@
+
+         void UpdateText()
+         {
+             string phase = Course != null ? Course.PhaseLabel() : "SIMULADOR";
+-            string order = Course != null && Course.SelectedOrder != null ? Course.SelectedOrder.Id + " · " + Course.SelectedOrder.Title : "--";
+-            string mode = Course != null ? (Course.Mode == CourseModeV5.Training ? "Entrenamiento" : "Examen") : "--";
+             string view = Viewpoints != null ? Viewpoints.CurrentLabel : "Vista";
+             string input = HybridInput != null ? HybridInput.ActiveMotionSource : "Teclado";
+ 
+-            _headline.text = phase + "    |    " + order + "    |    " + mode;
++            string id = Course != null ? Course.CurrentOrderId : "--";
++            SetText(_headline, id + "  ·  " + phase, Width * 0.90f, 0.045f);
+ 
+             string arc = Torch != null && Torch.HasArcSurface ? Torch.ArcLenMm.ToString("0.0") + " mm" : "--";
+             string rod = Torch != null ? Torch.RemainingMm.ToString("0") + " mm" : "--";
+             string amps = Machine != null ? Machine.Amperage.ToString("0") + " A" : "--";
+             string source = "Entrada: " + input + "    Vista: " + view;
+-            _metrics.text = "Arco  " + arc + "      Varilla  " + rod + "      Corriente  " + amps + "\n" + source;
++            string metrics = "Arco  " + arc + "   Varilla  " + rod + "   Corriente  " + amps + "\n" + source;
++            if (Task != null && Task.State == SessionState.Finished)
++                metrics = "Nota  " + Task.FinalScore.ToString("0") + "/100   Tiempo  " + Task.Elapsed.ToString("0") + " s\n" +
++                    "Puntos correctos  " + Task.GoodPoints + "   Sin soldar  " + Task.UntouchedPoints;
++            SetText(_metrics, metrics, Width * 0.90f, 0.065f);
+ 
+             bool running = Course != null && Course.Phase == CoursePhaseV5.Running;
+             if (running && !ShowHelpDuringRunning)
+             {
+-                _help.text = "";
++                SetText(_help, "F: finalizar · M: menu · N/P: estaciones", Width * 0.90f, 0.045f);
+             }
+             else
+             {
+-                _help.text = "Robot: WASDQE + IJKLUO     Soldar: Espacio / R / Tab     Escena: Flechas + RePag/AvPag + Mouse der.";
++                SetText(_help, "WASD/QE: robot · IJKL/UO: orientar\nEspacio: arco · R: recargar · Tab: electrodo · H: careta", Width * 0.90f, 0.060f);
+             }
+ 
+             string alert = ComputeAlert();
+-            _alert.text = alert;
++            SetText(_alert, alert, Width * 0.87f, 0.045f);
+             if (_alertMat != null)
+                 _alertMat.color = string.IsNullOrEmpty(alert) ? new Color(0.02f, 0.03f, 0.045f, 0.0f) : new Color(0.22f, 0.12f, 0.02f, 0.92f);
+         }
+@@ -145,11 +152,15 @@
+
+         string ComputeAlert()
+         {
+             if (Torch == null) return "";
++            if (Course != null && Course.Phase != CoursePhaseV5.Running) return "";
+             if (Torch.State == ArcState.Stuck) return "ELECTRODO PEGADO — SEPARAR HERRAMIENTA";
+             if (Machine != null && Machine.ThermalTripped) return "PROTECCION TERMICA — ESPERAR ENFRIAMIENTO";
+             if (Torch.RemainingMm <= Torch.StubLengthMm + 10f) return "VARILLA CASI AGOTADA — CAMBIAR ELECTRODO";
+             if (!Torch.HasArcSurface) return "";
+ 
++            // En examen se conservan avisos de estado, sin pistas de calidad.
++            if (Course != null && Course.Mode == CourseModeV5.Exam) return "";
++
+             if (Torch.SparkRequested && Torch.ArcLenMm >= Torch.MaxArcLenMm) return "ACERQUE EL ELECTRODO PARA CEBAR";
+             if (Torch.ArcLenMm < 1.2f) return "ARCO MUY CORTO";
+             if (Machine != null && Machine.Current != null)
+@@ -161,6 +172,17 @@
+
+             return "";
+         }
+ 
++        static void SetText(TextMesh text, string value, float width, float height)
++        {
++            if (text.text == value) return;
++            text.text = value;
++            text.transform.localScale = Vector3.one;
++            Bounds bounds = text.GetComponent<Renderer>().localBounds;
++            float scale = Mathf.Min(1f, width / Mathf.Max(0.001f, bounds.size.x),
++                height / Mathf.Max(0.001f, bounds.size.y));
++            text.transform.localScale = Vector3.one * scale;
++        }
++
+         static void SafeDestroy(Object obj)
+         {
+             if (obj == null) return;
+@@ -170,6 +192,7 @@
+
+ 
+         void OnDestroy()
+         {
++            if (_root != null) SafeDestroy(_root.gameObject);
+             if (_bgMat != null) SafeDestroy(_bgMat);
+             if (_alertMat != null) SafeDestroy(_alertMat);
+         }
+--- Antes/Assets\FrankaVR\V5\Course\CourseTrainingManagerV5.cs
+
++++ Assets\FrankaVR\V5\Course\CourseTrainingManagerV5.cs
+
+@@ -14,6 +14,7 @@
+
+     {
+         public WeldingTaskManager Task;
+         public TrainingWorkpieceFactoryV5 Workpieces;
++        public WeldingEnvironmentPolish Guidance;
+ 
+         [Header("Inicio")]
+         public bool PrepareOnStart = true;
+@@ -42,6 +43,7 @@
+
+         {
+             if (Task == null) Task = FindObjectOfType<WeldingTaskManager>();
+             if (Workpieces == null) Workpieces = FindObjectOfType<TrainingWorkpieceFactoryV5>();
++            if (Guidance == null) Guidance = FindObjectOfType<WeldingEnvironmentPolish>();
+         }
+ 
+         void Start()
+@@ -52,6 +54,8 @@
+
+ 
+         void Update()
+         {
++            if (Guidance != null)
++                Guidance.SetGuidanceVisible(Phase != CoursePhaseV5.Running || Mode == CourseModeV5.Training);
+             if (Task != null && Task.State == SessionState.Finished && Phase == CoursePhaseV5.Running)
+                 Phase = CoursePhaseV5.Results;
+ 
+@@ -71,6 +75,7 @@
+
+ 
+         public void SelectExercise(int index)
+         {
++            if (Phase == CoursePhaseV5.Running) return;
+             WorkOrder[] catalog = WorkOrder.Catalog;
+             if (catalog == null || catalog.Length == 0) return;
+             SelectedExercise = Mathf.Clamp(index, 0, catalog.Length - 1);
+@@ -96,18 +101,21 @@
+
+             if (o == null) return;
+ 
+             CurrentOrderId = o.Id;
++            if (Task != null) Task.ResetTask();
+             if (Workpieces != null) Workpieces.BuildFor(o);
+             if (Task != null) Task.LoadWorkOrder(o.Id);
+         }
+ 
+         public void StartTraining()
+         {
++            if (Phase == CoursePhaseV5.Running) return;
+             Mode = CourseModeV5.Training;
+             BeginSelected();
+         }
+ 
+         public void StartExam()
+         {
++            if (Phase == CoursePhaseV5.Running) return;
+             Mode = CourseModeV5.Exam;
+             BeginSelected();
+         }
+@@ -132,7 +140,7 @@
+
+ 
+         public void BackToMenu()
+         {
+-            if (Task != null && Task.State == SessionState.Running) Task.ResetTask();
++            if (Task != null) Task.ResetTask();
+             Phase = CoursePhaseV5.Selection;
+         }
+ 
+--- Antes/Assets\FrankaVR\V5\Course\TrainingWorkpieceFactoryV5.cs
+
++++ Assets\FrankaVR\V5\Course\TrainingWorkpieceFactoryV5.cs
+
+@@ -27,6 +27,8 @@
+
+         public float PipeSectionLength = 0.18f;
+         public float PipeGap = 0.005f;
+         public float PipeInnerRatio = 0.82f;
++        public int LineSamples = 60;
++        public int CircleSamples = 84;
+ 
+         [Header("Materiales")]
+         public Color SteelColor = new Color(0.30f, 0.32f, 0.35f, 1f);
+@@ -150,6 +152,10 @@
+
+                 new Vector3(PlateLength, t, halfW * 2f), _steelMat, true);
+             MakeBox("ButtPlate_B", new Vector3(_referenceCenter.x, y, _referenceCenter.z + zOff),
+                 new Vector3(PlateLength, t, halfW * 2f), _steelMat, true);
++            // Raiz didactica de la junta, ligeramente hundida. Da una superficie
++            // soldable al centro del hueco, igual que la raiz simplificada del caño.
++            MakeBox("Butt_Root", new Vector3(_referenceCenter.x, _referenceTopY - 0.002f, _referenceCenter.z),
++                new Vector3(PlateLength, 0.002f, ButtGap), _edgeMat, true);
+             MakeLineMarkers(o.SeamLengthM, new Vector3(_referenceCenter.x, _referenceTopY + 0.0015f, _referenceCenter.z));
+         }
+ 
+@@ -164,7 +170,9 @@
+
+             MakeBox("T_Vertical", new Vector3(_referenceCenter.x, _referenceTopY + verticalHeight * 0.5f, _referenceCenter.z),
+                 new Vector3(PlateLength, verticalHeight, t), _steelMat, true);
+ 
+-            float seamZ = _referenceCenter.z + t * 0.55f;
++            // Con avance +X, el angulo de trabajo +45 grados apunta el mango
++            // hacia -Z. Soldar ese lado evita atravesar la chapa vertical.
++            float seamZ = _referenceCenter.z - t * 0.55f;
+             MakeLineMarkers(o.SeamLengthM, new Vector3(_referenceCenter.x, _referenceTopY + 0.002f, seamZ));
+         }
+ 
+@@ -193,6 +201,10 @@
+
+ 
+             MakePipeSection("Pipe_Left", center + Vector3.left * xOff, r, PipeSectionLength);
+             MakePipeSection("Pipe_Right", center + Vector3.right * xOff, r, PipeSectionLength);
++            // Raiz simplificada de la junta: sin ella el raycast radial cae en el
++            // hueco entre tramos, aunque la costura este a la distancia correcta.
++            GameObject joint = MakePipeSection("Pipe_JointRoot", center, r, PipeGap);
++            joint.GetComponent<Renderer>().sharedMaterial = _edgeMat;
+             MakePipeCut("PipeCut_Left", center + Vector3.left * (PipeGap * 0.5f + 0.0007f), r * PipeInnerRatio);
+             MakePipeCut("PipeCut_Right", center + Vector3.right * (PipeGap * 0.5f + 0.0007f), r * PipeInnerRatio);
+             MakePipeSupport("PipeSupport_Left", center + Vector3.left * (PipeSectionLength * 0.58f), r);
+@@ -235,13 +247,13 @@
+
+                 Seam.CircleCenter = _circleCenter;
+                 Seam.CircleAxis = Vector3.right;
+                 Seam.CircleRadius = o.PipeRadiusM;
+-                Seam.Samples = Mathf.Max(84, Seam.Samples);
++                Seam.Samples = Mathf.Max(2, CircleSamples);
+             }
+             else
+             {
+                 Seam.Start = _start;
+                 Seam.End = _end;
+-                Seam.Samples = Mathf.Max(60, Seam.Samples);
++                Seam.Samples = Mathf.Max(2, LineSamples);
+             }
+             Seam.Build();
+         }
+@@ -276,12 +288,12 @@
+
+             if (!collider)
+             {
+                 Collider c = go.GetComponent<Collider>();
+-                if (c != null) Destroy(c);
++                if (c != null) SafeDestroy(c);
+             }
+             return go;
+         }
+ 
+-        void MakePipeSection(string name, Vector3 pos, float radius, float length)
++        GameObject MakePipeSection(string name, Vector3 pos, float radius, float length)
+         {
+             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+             go.name = name;
+@@ -289,9 +301,16 @@
+
+             go.transform.SetParent(_root, true);
+             go.transform.position = pos;
+             go.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
+-            go.transform.localScale = new Vector3(radius, length * 0.5f, radius);
++            go.transform.localScale = new Vector3(radius * 2f, length * 0.5f, radius * 2f);
+             Renderer rr = go.GetComponent<Renderer>();
+             if (rr != null && _steelMat != null) rr.sharedMaterial = _steelMat;
++            // Cylinder trae CapsuleCollider: su silueta no coincide con los extremos.
++            Collider old = go.GetComponent<Collider>();
++            if (old != null) { old.enabled = false; SafeDestroy(old); }
++            MeshCollider surface = go.AddComponent<MeshCollider>();
++            surface.sharedMesh = go.GetComponent<MeshFilter>().sharedMesh;
++            surface.convex = false;
++            return go;
+         }
+ 
+         void MakePipeCut(string name, Vector3 pos, float radius)
+@@ -302,11 +321,11 @@
+
+             go.transform.SetParent(_root, true);
+             go.transform.position = pos;
+             go.transform.rotation = Quaternion.Euler(0f, 0f, 90f);
+-            go.transform.localScale = new Vector3(radius, 0.0005f, radius);
++            go.transform.localScale = new Vector3(radius * 2f, 0.0005f, radius * 2f);
+             Renderer rr = go.GetComponent<Renderer>();
+             if (rr != null && _edgeMat != null) rr.sharedMaterial = _edgeMat;
+             Collider c = go.GetComponent<Collider>();
+-            if (c != null) Destroy(c);
++            if (c != null) SafeDestroy(c);
+         }
+ 
+         void MakePipeSupport(string name, Vector3 pipeCenter, float radius)
+@@ -318,17 +337,23 @@
+
+         public void ClearGenerated()
+         {
+             if (_root == null) return;
+-            if (Application.isPlaying) Destroy(_root.gameObject);
+-            else DestroyImmediate(_root.gameObject);
++            _root.gameObject.SetActive(false);
++            SafeDestroy(_root.gameObject);
+             _root = null;
+             _start = _end = _circleCenter = null;
+         }
+ 
+         void OnDestroy()
+         {
+-            if (_steelMat != null) Destroy(_steelMat);
+-            if (_edgeMat != null) Destroy(_edgeMat);
+-            if (_supportMat != null) Destroy(_supportMat);
++            if (_steelMat != null) SafeDestroy(_steelMat);
++            if (_edgeMat != null) SafeDestroy(_edgeMat);
++            if (_supportMat != null) SafeDestroy(_supportMat);
++        }
++
++        static void SafeDestroy(Object obj)
++        {
++            if (Application.isPlaying) Destroy(obj);
++            else DestroyImmediate(obj);
+         }
+     }
+ }
+--- Antes/Assets\FrankaVR\V5\Editor\GloveEmulatorWindowV5.cs
+
++++ Assets\FrankaVR\V5\Editor\GloveEmulatorWindowV5.cs
+
+@@ -1,6 +1,7 @@
+
+ #if UNITY_EDITOR
+ using UnityEditor;
+ using UnityEngine;
++using System.Globalization;
+ using FrankaVR.Teleop;
+ 
+ namespace FrankaVR.V5.EditorTools
+@@ -63,12 +64,25 @@
+
+             if (glove == null) return;
+ 
+             Quaternion q = Quaternion.Euler(pitch, yaw, roll);
+-            glove.OnPrimaryGlovePacket(q, clutch);
+-            glove.OnSecondaryButtons(spark, ampPlusPulse, ampMinusPulse, cyclePulse, replacePulse, helmetPulse, resetPulse);
++            GlovePacketBridge bridge = FindObjectOfType<GlovePacketBridge>();
++            if (bridge != null)
++            {
++                bridge.OnBleMessage(string.Format(CultureInfo.InvariantCulture,
++                    "IMU,{0:R},{1:R},{2:R},{3:R},{4}", q.w, q.x, q.y, q.z, B(clutch)));
++                bridge.OnBleMessage("BTN," + B(spark) + "," + B(ampPlusPulse) + "," + B(ampMinusPulse) + "," +
++                    B(cyclePulse) + "," + B(replacePulse) + "," + B(helmetPulse) + "," + B(resetPulse));
++            }
++            else
++            {
++                glove.OnPrimaryGlovePacket(q, clutch);
++                glove.OnSecondaryButtons(spark, ampPlusPulse, ampMinusPulse, cyclePulse, replacePulse, helmetPulse, resetPulse);
++            }
+ 
+             ampPlusPulse = ampMinusPulse = cyclePulse = replacePulse = helmetPulse = resetPulse = false;
+             Repaint();
+         }
++
++        static string B(bool value) => value ? "1" : "0";
+     }
+ }
+ #endif
+--- Antes/ProjectSettings\EditorBuildSettings.asset
+
++++ ProjectSettings\EditorBuildSettings.asset
+
+@@ -4,7 +4,10 @@
+
+ EditorBuildSettings:
+   m_ObjectHideFlags: 0
+   serializedVersion: 2
+-  m_Scenes: []
++  m_Scenes:
++  - enabled: 1
++    path: Assets/Main.unity
++    guid: 48039779eff00754488f34e7002e67af
+   m_configObjects:
+     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
+     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 289c1b55c9541489481df5cc06664110, type: 3}

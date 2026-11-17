@@ -78,8 +78,16 @@ public class PandaIK : MonoBehaviour
     public float toleranceMeters = 0.005f;
     public float toleranceDegrees = 3f;
 
-    [Tooltip("Histeresis: reanuda recien cuando el error supera la tolerancia por " +
-             "este factor. Evita que se prenda y apague sin parar.")]
+    [Header("Codo")]
+    [Tooltip("Con el codo (J4) casi recto el brazo esta en singularidad y el DLS no puede " +
+             "volver a recogerlo: queda trabado estirado. Se lo mantiene flexionado al menos " +
+             "este angulo (el tope real es -4). Cuesta menos de 1 cm de alcance.")]
+    public float elbowKeepBentDeg = -20f;
+    [Tooltip("Correccion maxima por paso hacia el codo flexionado, en grados.")]
+    public float elbowBiasDegPerStep = 0.6f;
+
+    [Tooltip("OBSOLETO. Ya no se usa: el servo no se apaga al llegar, la correccion se " +
+             "desvanece sola con la zona muerta suave. Se conserva por compatibilidad.")]
     public float resumeFactor = 2f;
 
     [Header("Estado")]
@@ -88,13 +96,19 @@ public class PandaIK : MonoBehaviour
              "tildala a mano para probar.")]
     public bool solving = false;
 
+    [Tooltip("Segundos de gracia al arrancar antes de que la IK tome el control. " +
+             "PandaArm.Start() manda el brazo a la pose 'home', pero llegar ahi lleva " +
+             "tiempo fisico. Si la IK arranca antes, sincroniza los targets con la pose " +
+             "cruda del URDF importado y el brazo queda congelado torcido, sin pasar " +
+             "nunca por home. 1-2 s alcanza.")]
+    public float startupGraceSec = 1.5f;
+
     // Velocidades maximas reales del Panda, en grados/segundo (del URDF oficial).
     // Recortar por VELOCIDAD y no por un paso fijo es lo que hace que el movimiento
     // se vea de robot y no de animacion a saltos.
     static readonly float[] MaxDegPerSec = { 124.6f, 124.6f, 124.6f, 124.6f, 149.5f, 149.5f, 149.5f };
 
     PandaArm arm;
-    bool settled;
 
     /// <summary>Eje de aproximacion, en coordenadas locales de la punta.</summary>
     Vector3 localApproach = Vector3.forward;
@@ -123,25 +137,18 @@ public class PandaIK : MonoBehaviour
     public Vector3 ToolAxisWorld() => endEffector.TransformDirection(localApproach).normalized;
 
     /// <summary>
-    /// Con histeresis: una vez alcanzado, no reanuda hasta apartarse bastante.
-    /// SOLO LECTURA: el estado se actualiza en UpdateSettled(), una vez por FixedUpdate.
-    /// Antes esto era un property con efecto colateral y OnDrawGizmos tambien lo leia,
-    /// asi que el dibujado (a framerate de render) pisaba el estado del servo.
+    /// Alcanzado dentro de tolerancia. Es solo INFORMATIVO (HUD, gizmos): el servo ya no
+    /// se apaga al llegar, asi que no necesita histeresis.
+    ///
+    /// Antes esto era un property con efecto colateral que ademas leia OnDrawGizmos, y
+    /// FixedUpdate hacia 'if (Reached) return', apagando la IK por completo. Eso producia
+    /// un ciclo limite en reposo: llegaba, se apagaba, el brazo se asentaba, el error
+    /// cruzaba el umbral de reanudacion y volvia a encenderse de golpe. Ahora la
+    /// correccion se desvanece de forma continua (ver zona muerta suave en Step).
     /// </summary>
-    public bool Reached => settled;
-
-    /// <summary>Actualiza la histeresis. Llamar una sola vez por paso de fisica.</summary>
-    void UpdateSettled()
-    {
-        float f = Mathf.Max(1f, resumeFactor);
-        bool within = ErrorMeters <= toleranceMeters &&
-                      (orientationWeight <= 0f || ErrorDegrees <= toleranceDegrees);
-        bool outside = ErrorMeters > toleranceMeters * f ||
-                       (orientationWeight > 0f && ErrorDegrees > toleranceDegrees * f);
-
-        if (settled && outside) settled = false;
-        else if (!settled && within) settled = true;
-    }
+    public bool Reached =>
+        ErrorMeters <= toleranceMeters &&
+        (orientationWeight <= 0f || ErrorDegrees <= toleranceDegrees);
 
     void Awake()
     {
@@ -176,18 +183,27 @@ public class PandaIK : MonoBehaviour
     }
 
     bool wasSolving;
+    float graceTimer;
 
     void FixedUpdate()
     {
         if (!solving || endEffector == null || target == null) { wasSolving = solving; return; }
 
+        // Periodo de gracia: dejar que el brazo alcance la pose 'home' antes de tomar el
+        // control. Sin esto, SyncTargetsToActual congelaba los targets en la pose cruda
+        // del URDF y el brazo arrancaba torcido en vez de vertical.
+        if (graceTimer < startupGraceSec)
+        {
+            graceTimer += Time.fixedDeltaTime;
+            wasSolving = false;   // al terminar la gracia cuenta como primera activacion
+            return;
+        }
+
         // Al reanudar, alinear los targets comandados con la postura real. Evita el
-        // tiron inicial cuando el brazo se movio (o se asento por gravedad) con la IK apagada.
+        // tiron cuando el brazo se movio (o se asento por gravedad) con la IK apagada.
         if (!wasSolving) arm.SyncTargetsToActual();
         wasSolving = true;
 
-        UpdateSettled();
-        if (Reached) return;
         Step();
     }
 
@@ -195,9 +211,15 @@ public class PandaIK : MonoBehaviour
     {
         Vector3 ee = endEffector.position;
 
-        // --- Error de posicion, recortado ---
+        // --- Error de posicion, con ZONA MUERTA SUAVE ---
+        //
+        // La correccion se desvanece de forma CONTINUA al llegar a la tolerancia, en vez
+        // de conmutar. Con el apagado abrupto anterior, el brazo quieto entraba en ciclo
+        // limite: llegaba, se apagaba, se asentaba por gravedad, y volvia a encenderse.
         Vector3 ep = target.position - ee;
-        if (ep.magnitude > maxStepMeters) ep = ep.normalized * maxStepMeters;
+        float epMag = ep.magnitude;
+        if (epMag <= toleranceMeters) ep = Vector3.zero;
+        else ep = ep.normalized * Mathf.Min(epMag - toleranceMeters, maxStepMeters);
 
         // --- Error de ALINEACION del eje de la pinza ---
         //
@@ -224,9 +246,15 @@ public class PandaIK : MonoBehaviour
             }
             else axis /= sn;
 
-            ang = Mathf.Clamp(ang, -maxStepDegrees, maxStepDegrees);
+            // Misma zona muerta suave que en posicion.
+            if (ang <= toleranceDegrees) ang = 0f;
+            else ang = Mathf.Min(ang - toleranceDegrees, maxStepDegrees);
             eo = axis * (ang * Mathf.Deg2Rad);
         }
+
+        // Nada que corregir: no se escriben targets (y por lo tanto no hay windup ni
+        // microcorrecciones que exciten el drive).
+        if (ep.sqrMagnitude < 1e-12f && eo.sqrMagnitude < 1e-12f) return;
 
         // --- Jacobiano 6x7 ---
         // lineal:  col_i = axis_i x (p_ee - pivot_i)
@@ -264,6 +292,12 @@ public class PandaIK : MonoBehaviour
             if (cap > 1e-6f) ratio = Mathf.Max(ratio, Mathf.Abs(dDeg[i]) / cap);
         }
         float scale = (ratio > 1f) ? 1f / ratio : 1f;
+
+        // Sesgo de postura: alejar el codo de la singularidad de brazo estirado. El servo
+        // corrige en el paso siguiente con las demas juntas.
+        const int Elbow = 3;
+        float elbowExcess = arm.CurrentDeg(Elbow) - elbowKeepBentDeg;
+        if (elbowExcess > 0f) dDeg[Elbow] -= Mathf.Min(elbowBiasDegPerStep, elbowExcess * 0.2f) / Mathf.Max(scale, 1e-3f);
 
         // --- Escritura de targets con ANTI-WINDUP ---
         //

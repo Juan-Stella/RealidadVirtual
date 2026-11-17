@@ -1,0 +1,6 @@
+PASS
+Main, PandaIK, PandaArm, puntuacion y modelo intactos.
+167 metas previos intactos.
+Paquetes y versiones intactos.
+Torch solo ignora triggers UI; ArcOriginPosition y consumo conservados.
+WeldSeam conserva deposito y evaluacion; agrega giro de muestras N5.

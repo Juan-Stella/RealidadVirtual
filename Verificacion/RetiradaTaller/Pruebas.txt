@@ -1,0 +1,7 @@
+[ControlPunta] Aproximacion arco=4,131723 error=0,0007483569
+[ControlPunta] Avance=16,05374mm arco=3,286512
+[ControlPunta] Error al orientar=1,027652mm
+[ControlPunta] Retirada con arco pedido=16,27231mm
+[FrankaVR Checks] PASS Control de punta N1: aproximacion, avance, arco, orientacion, superficies y exclusion de examen verificados.Succeeded
+Errores: 0
+Bytes: 136948249

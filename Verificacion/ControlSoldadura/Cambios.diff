@@ -1,0 +1,549 @@
+--- antes/Assets\Editor\FrankaVRProjectChecks.cs
++++ actual/Assets\Editor\FrankaVRProjectChecks.cs
+@@ -14,6 +14,7 @@
+ public static class FrankaVRProjectChecks
+ {
+     const string RunningKey = "FrankaVR.ProjectChecks.Running";
++    const string ControlKey = "FrankaVR.ProjectChecks.ControlOnly";
+     static IEnumerator _steps;
+     static int _lastFrame = -1;
+     static double _deadline;
+@@ -26,8 +27,19 @@
+     // Unity.exe -batchmode -projectPath ... -executeMethod FrankaVRProjectChecks.RunBatch
+     public static void RunBatch()
+     {
++        UnityEditor.SessionState.SetBool(ControlKey, false);
+         EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
+         ValidateScene();
++        UnityEditor.SessionState.SetBool(RunningKey, true);
++        Subscribe();
++        EditorApplication.EnterPlaymode();
++    }
++
++    public static void RunControlBatch()
++    {
++        EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
++        ValidateScene();
++        UnityEditor.SessionState.SetBool(ControlKey, true);
+         UnityEditor.SessionState.SetBool(RunningKey, true);
+         Subscribe();
+         EditorApplication.EnterPlaymode();
+@@ -74,8 +86,10 @@
+         _lastFrame = Time.frameCount;
+         try
+         {
+-            if (_steps == null) _steps = Smoke();
+-            if (!_steps.MoveNext()) Complete(true, "Referencias, curso N1-N5, superficies, CSV, timeouts, cierre de sesion y deposicion N1 verificados.");
++            bool controlOnly = UnityEditor.SessionState.GetBool(ControlKey, false);
++            if (_steps == null) _steps = controlOnly ? ControlSmoke() : Smoke();
++            if (!_steps.MoveNext()) Complete(true, controlOnly ? "Control de punta N1: aproximacion, avance, arco, orientacion, superficies y exclusion de examen verificados." :
++                "Referencias, curso N1-N5, superficies, CSV, timeouts, cierre, deposicion y control de punta N1 verificados.");
+         }
+         catch (Exception ex) { Complete(false, ex.ToString()); }
+     }
+@@ -246,6 +260,8 @@
+         while (reachAudit.MoveNext()) yield return reachAudit.Current;
+         Require(Mathf.Approximately(teleop.Ik.toleranceMeters, 0.005f) && Mathf.Approximately(teleop.Ik.toleranceDegrees, 3f),
+             "Precision no restaura las tolerancias de la escena");
++        IEnumerator controlAudit = AuditTipControl(course, task, teleop, torch);
++        while (controlAudit.MoveNext()) yield return controlAudit.Current;
+         course.BackToMenu();
+         course.SelectExercise(0);
+         course.StartTraining();
+@@ -279,6 +295,87 @@
+         Require(File.Exists(course.LastResultPath) && File.Exists(Path.ChangeExtension(course.LastResultPath, ".csv")), "No se exportaron JSON/CSV");
+         var saved = JsonUtility.FromJson<WeldingSessionReport.Result>(File.ReadAllText(course.LastResultPath));
+         Require(saved.exercise == "N1" && Mathf.Approximately(saved.score, task.FinalScore), "Resultado exportado no coincide con la sesion");
++    }
++
++    static IEnumerator ControlSmoke()
++    {
++        float until = Time.unscaledTime + 5f;
++        while (Time.unscaledTime < until) yield return null;
++        var course = One<CourseTrainingManagerV5>();
++        course.ResultsDirectoryOverride = "Verificacion/Resultados_prueba";
++        IEnumerator audit = AuditTipControl(course, One<WeldingTaskManager>(),
++            One<WeldingTeleopController>(), One<WeldingTorch>());
++        while (audit.MoveNext()) yield return audit.Current;
++        CheckPanels();
++    }
++
++    static IEnumerator AuditTipControl(CourseTrainingManagerV5 course, WeldingTaskManager task,
++        WeldingTeleopController teleop, WeldingTorch torch)
++    {
++        teleop.enabled = false;
++        course.BackToMenu(); course.SelectExercise(0); course.StartTraining();
++        for (int i = 0; i < 3; i++) yield return null;
++        Physics.SyncTransforms();
++        int mid = task.Seam.Count / 2;
++        Vector3 point = task.Seam.PointAt(mid);
++        Vector3 normal = task.Seam.NormalAt(mid);
++        Vector3 guarded = teleop.GuardSurface(point + normal * 0.02f, point - normal * 0.02f);
++        Require(Vector3.Dot(guarded - point, normal) > 0f, "Proteccion deja atravesar la chapa");
++        Require(teleop.NearestSeam(point + task.Seam.TangentAt(mid) * 0.001f,
++            out Vector3 projected, out _, out _) && Vector3.Distance(projected, point) < 0.002f,
++            "Guia salta entre muestras en vez de interpolar");
++        teleop.ResetTo(teleop.Ik.endEffector.position);
++        Require(teleop.BeginAssistedApproach(), "No inicia aproximacion asistida de practica");
++        var command = TeleopCommand.Neutral;
++        float until = Time.unscaledTime + 36f;
++        while (teleop.Approaching && Time.unscaledTime < until)
++        {
++            teleop.ApplyMotion(command, true, Time.deltaTime);
++            yield return null;
++        }
++        command.Orientation = Quaternion.FromToRotation(Vector3.down, teleop.Ik.approachDirection);
++        float settle = Time.unscaledTime + 4f;
++        while (Time.unscaledTime < settle)
++        { teleop.ApplyMotion(command, true, Time.deltaTime); yield return null; }
++        float arc = torch.MeasureArcLenMm();
++        Debug.Log("[ControlPunta] Aproximacion arco=" + arc + " error=" + Vector3.Distance(torch.ArcOriginPosition, teleop.PhysicalTarget));
++        Require(arc > 0.4f && arc < 15f, "Aproximacion no deja la punta en rango util: " + arc);
++        Vector3 start = torch.ArcOriginPosition;
++        command.SparkHeld = true;
++        command.MoveClutch = true;
++        command.TranslationRate = task.Seam.TangentAt(mid) * (0.006f / teleop.MoveSpeed);
++        // Marco mundo para una trayectoria conocida, sin inyectar teclas al usuario.
++        bool relative = teleop.ReferenceRelative;
++        teleop.ReferenceRelative = false;
++        until = Time.unscaledTime + 3f;
++        int stableFrames = 0;
++        while (Time.unscaledTime < until)
++        {
++            teleop.ApplyMotion(command, true, Time.deltaTime);
++            torch.SetSparkRequested(true);
++            if (torch.Arcing) stableFrames++;
++            yield return null;
++        }
++        torch.SetSparkRequested(false);
++        teleop.ReferenceRelative = relative;
++        Debug.Log("[ControlPunta] Avance=" + Vector3.Distance(start, torch.ArcOriginPosition) * 1000f + "mm arco=" + torch.ArcLenMm);
++        Require(torch.ArcLenMm > 0.4f && torch.ArcLenMm < 20f, "Control de avance pierde la superficie");
++        Require(stableFrames > 10, "Avance guiado no mantiene arco estable");
++        Capture("08_control_punta");
++        Require(teleop.UsedTrainingAssistance && WeldingSessionReport.Snapshot(task, "Training", false).assistedControl,
++            "El resultado no identifica el uso de asistencia");
++        Vector3 held = teleop.PhysicalTarget;
++        command.SparkHeld = false; command.TranslationRate = Vector3.zero;
++        command.Orientation = Quaternion.AngleAxis(10f, Vector3.up) * command.Orientation;
++        until = Time.unscaledTime + 4f;
++        while (Time.unscaledTime < until)
++        { teleop.ApplyMotion(command, true, Time.deltaTime); yield return null; }
++        float rotationError = Vector3.Distance(held, torch.ArcOriginPosition);
++        Debug.Log("[ControlPunta] Error al orientar=" + rotationError * 1000f + "mm");
++        Require(rotationError < 0.006f, "La orientacion desplaza la punta sostenida");
++        course.FinishExercise(); course.StartExam();
++        Require(!teleop.BeginAssistedApproach(), "La asistencia se activa en examen");
++        teleop.SetPrecisionSolver(false);
+     }
+ 
+     static IEnumerator AuditReach(CourseTrainingManagerV5 course, WeldingTaskManager task,
+--- antes/Assets\Scripts\Welding\KeyboardTeleopInput.cs
++++ actual/Assets\Scripts\Welding\KeyboardTeleopInput.cs
+@@ -19,17 +19,21 @@
+         [Header("Sensibilidad")]
+         public float RotSpeedDeg = 60f; // grados/seg
+         public float TransRate   = 1f;  // magnitud de velocidad (0..1)
+-        public float FineTranslationMultiplier = 0.02f;
++        public float FineTranslationMultiplier = 0.01f;
+         public float FineRotationMultiplier = 0.15f;
+ 
+         Quaternion _accum = Quaternion.identity;
+         bool _prevCycle;
++        public void SetOrientation(Quaternion orientation) => _accum = orientation;
+ 
+         public TeleopCommand Poll(Quaternion currentToolOrientation)
+         {
+             bool fine = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+-            float precision = fine ? FineTranslationMultiplier : 1f;
+-            float dt = Time.deltaTime * (fine ? FineRotationMultiplier : 1f);
++            bool fast = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
++            // Velocidades de operacion: 30 mm/s normal, 6 mm/s con arco,
++            // 3 mm/s fino y 120 mm/s para desplazamientos (MoveSpeed escena = .3).
++            float precision = fine ? FineTranslationMultiplier : Input.GetKey(KeyCode.Space) ? 0.02f : fast ? 0.4f : 0.1f;
++            float dt = Mathf.Min(Time.deltaTime, 0.05f) * (fine ? FineRotationMultiplier : 0.3f);
+             float pitch = (Key(KeyCode.I) - Key(KeyCode.K)) * RotSpeedDeg * dt;
+             float yaw   = (Key(KeyCode.L) - Key(KeyCode.J)) * RotSpeedDeg * dt;
+             float roll  = (Key(KeyCode.O) - Key(KeyCode.U)) * RotSpeedDeg * dt;
+@@ -40,7 +44,8 @@
+             Vector3 rate = new Vector3(
+                 Key(KeyCode.D) - Key(KeyCode.A),
+                 Key(KeyCode.E) - Key(KeyCode.Q),
+-                Key(KeyCode.W) - Key(KeyCode.S)) * (TransRate * precision);
++                Key(KeyCode.W) - Key(KeyCode.S));
++            rate = Vector3.ClampMagnitude(rate, 1f) * (TransRate * precision);
+ 
+             bool cycle = Input.GetKey(KeyCode.Tab);
+             bool cycleEdge = cycle && !_prevCycle;
+--- antes/Assets\Scripts\Welding\WeldingSessionReport.cs
++++ actual/Assets\Scripts\Welding\WeldingSessionReport.cs
+@@ -12,9 +12,10 @@
+         [Serializable]
+         public class Result
+         {
+-            public int schemaVersion = 1;
++            public int schemaVersion = 2;
+             public string timestampUtc, exercise, title, mode;
+             public bool indexedPipe, passed;
++            public bool assistedControl;
+             public float score, seconds, arcOnSeconds, meanArcMm, arcDeviationMm, coveragePercent;
+             public int totalPoints, good, cold, burnThrough, undercut, porosity, untouched, sticks, arcBreaks, electrodes;
+             public string advice;
+@@ -27,6 +28,7 @@
+             {
+                 timestampUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+                 exercise = task.WorkOrderId,
++                assistedControl = task.Teleop != null && task.Teleop.UsedTrainingAssistance,
+                 title = task.Order != null ? task.Order.Title : "",
+                 mode = mode, indexedPipe = indexedPipe, passed = task.Passed(),
+                 score = task.FinalScore, seconds = task.Elapsed, arcOnSeconds = task.ArcOnTime,
+@@ -62,10 +64,10 @@
+             string name = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture) +
+                 "_" + result.exercise + "_" + Guid.NewGuid().ToString("N").Substring(0, 6);
+             string jsonPath = Path.Combine(folder, name + ".json");
+-            string[] headers = { "fecha_utc", "ejercicio", "modo", "cano_indexado", "nota", "aprobado", "duracion_s", "arco_s",
++            string[] headers = { "fecha_utc", "ejercicio", "modo", "cano_indexado", "control_asistido", "nota", "aprobado", "duracion_s", "arco_s",
+                 "arco_medio_mm", "desvio_arco_mm", "cobertura_pct", "puntos", "correctos", "frios", "perforacion", "socavado",
+                 "porosidad", "sin_soldar", "pegadas", "cortes", "electrodos", "recomendacion" };
+-            string[] values = { result.timestampUtc, result.exercise, result.mode, result.indexedPipe.ToString(), N(result.score),
++            string[] values = { result.timestampUtc, result.exercise, result.mode, result.indexedPipe.ToString(), result.assistedControl.ToString(), N(result.score),
+                 result.passed.ToString(), N(result.seconds), N(result.arcOnSeconds), N(result.meanArcMm), N(result.arcDeviationMm),
+                 N(result.coveragePercent), result.totalPoints.ToString(), result.good.ToString(), result.cold.ToString(),
+                 result.burnThrough.ToString(), result.undercut.ToString(), result.porosity.ToString(), result.untouched.ToString(),
+--- antes/Assets\Scripts\Welding\WeldingTeleopController.cs
++++ actual/Assets\Scripts\Welding\WeldingTeleopController.cs
+@@ -1,6 +1,7 @@
+ using System.Collections;
+ using UnityEngine;
+ using FrankaVR.Teleop;
++using FrankaVR.V5;
+ 
+ namespace FrankaVR.Welding
+ {
+@@ -60,6 +61,31 @@
+         bool _precisionSolverActive;
+         float _normalPositionTolerance, _normalAngleTolerance;
+ 
++        [Header("Control de punta en PC")]
++        public bool ControlPhysicalTip = true;
++        public bool TrainingAssistance = true;
++        public float AssistedArcGap = 0.00325f;
++        public float MaximumManualLead = 0.025f;
++        public float ApproachSpeed = 0.04f;
++        Vector3 _physicalTarget, _physicalSmooth, _physicalVelocity;
++        bool _physicalInit;
++        CourseTrainingManagerV5 _course;
++        KeyboardTeleopInput _keyboard;
++        Renderer _logicalMarker;
++        bool _logicalMarkerVisible;
++        int _approachStage = -1;
++        Vector3 _approachLift, _approachPoint, _approachHand;
++        float _approachTime;
++        readonly RaycastHit[] _motionHits = new RaycastHit[32];
++        public bool Approaching => _approachStage >= 0;
++        public bool UsedTrainingAssistance { get; private set; }
++        public string AssistMessage { get; private set; }
++        public Vector3 PhysicalTarget => _physicalSmooth;
++        public bool AssistanceAvailable => TrainingAssistance && _course != null &&
++            _course.Mode == CourseModeV5.Training && _course.Phase == CoursePhaseV5.Running;
++        float DesiredArcGap => Machine != null && Machine.Current != null
++            ? Mathf.Clamp(Machine.Current.ArcLenIdealMm * 0.001f, 0.0025f, 0.006f) : AssistedArcGap;
++
+         public void SetPrecisionSolver(bool active)
+         {
+             if (Ik == null || _precisionSolverActive == active) return;
+@@ -78,7 +104,11 @@
+             _precisionSolverActive = active;
+         }
+ 
+-        void OnDisable() => SetPrecisionSolver(false);
++        void OnDisable()
++        {
++            SetPrecisionSolver(false);
++            if (_logicalMarker != null) _logicalMarker.enabled = _logicalMarkerVisible;
++        }
+ 
+         ITeleopInput _in;
+         string _targetOrigin = "sin inicializar";
+@@ -94,6 +124,13 @@
+             if (_in == null) Debug.LogError("WeldingTeleopController: InputSource no implementa ITeleopInput");
+ 
+             if (Machine == null && Torch != null) Machine = Torch.Machine;
++            _course = FindObjectOfType<CourseTrainingManagerV5>();
++            _keyboard = InputSource is HybridTeleopInput hybrid ? hybrid.Keyboard : InputSource as KeyboardTeleopInput;
++            if (Ik != null && Ik.target != null)
++            {
++                _logicalMarker = Ik.target.GetComponent<Renderer>();
++                if (_logicalMarker != null) _logicalMarkerVisible = _logicalMarker.enabled;
++            }
+ 
+             if (ReferenceCamera == null) ReferenceCamera = Camera.main;
+             ResolveMovementReference();
+@@ -143,7 +180,7 @@
+             GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+             go.name = "TargetMarker";
+             Collider c = go.GetComponent<Collider>();
+-            if (c != null) Destroy(c);
++            if (c != null) { c.enabled = false; Destroy(c); }
+             Renderer r = go.GetComponent<Renderer>();
+             if (r != null) r.material.color = new Color(0.2f, 1f, 0.4f, 1f);
+             go.transform.localScale = Vector3.one * (MarkerRadius * 2f);
+@@ -157,6 +194,10 @@
+             _smoothedPos = _targetPos;
+             _smoothVel = Vector3.zero;
+             _init = true;
++            _physicalInit = false;
++            _approachStage = -1;
++            UsedTrainingAssistance = false;
++            AssistMessage = "";
+         }
+ 
+         void Update()
+@@ -176,23 +217,12 @@
+             TeleopCommand cmd = _in.Poll(Ik.endEffector.rotation);
+             bool keyboardMotion = _in is KeyboardTeleopInput ||
+                 (_in is HybridTeleopInput hybrid && !hybrid.GloveMotionActive);
+-            SetPrecisionSolver(keyboardMotion && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)));
+-
+-            if (cmd.MoveClutch)
+-                _targetPos += ToWorldRate(cmd.TranslationRate) * (MoveSpeed * Time.deltaTime);
+-
+-            _targetPos = ClampWorkspace(_targetPos);
+-            _smoothedPos = PositionSmoothTime > 0f
+-                ? Vector3.SmoothDamp(_smoothedPos, _targetPos, ref _smoothVel, PositionSmoothTime)
+-                : _targetPos;
+-
+-            Ik.target.position = _smoothedPos;
+-            if (_marker != null) _marker.position = _smoothedPos;
+-
+-            Vector3 axis = cmd.ResetOrientation
+-                ? BaseApproach.normalized
+-                : cmd.Orientation * BaseApproach.normalized;
+-            Ik.approachDirection = LimitTilt(axis);
++            if (keyboardMotion && Input.GetKeyDown(KeyCode.B))
++            {
++                if (Approaching) _approachStage = -1;
++                else BeginAssistedApproach();
++            }
++            ApplyMotion(cmd, keyboardMotion, Time.deltaTime);
+ 
+             if (Machine != null)
+             {
+@@ -200,11 +230,172 @@
+                 if (cmd.AmperageStep != 0) Machine.StepAmperage(cmd.AmperageStep);
+             }
+             if (Torch != null)
+-                Torch.SetSparkRequested(cmd.SparkHeld && (Task == null || Task.State == SessionState.Running));
++                Torch.SetSparkRequested(cmd.SparkHeld && !Approaching && (Task == null || Task.State == SessionState.Running));
+             if (cmd.ReplaceElectrode && Task != null) Task.ReplaceElectrode();
+             if (cmd.ToggleHelmet && Helmet != null) Helmet.ToggleHelmet();
+ 
+             if (LogDiagnostics) Diagnostics();
++        }
++
++        // Conversion externa al solver: Soldador sigue siendo el TCP calibrado.
++        // Se conserva la posicion pedida de la punta al inclinar o consumir varilla.
++        public void ApplyMotion(TeleopCommand cmd, bool keyboardMotion, float deltaTime)
++        {
++            float dt = Mathf.Clamp(deltaTime, 0f, 0.05f);
++            Vector3 axis = LimitTilt(cmd.ResetOrientation ? BaseApproach : cmd.Orientation * BaseApproach);
++            bool physical = keyboardMotion && ControlPhysicalTip && Torch != null;
++            if (_logicalMarker != null) _logicalMarker.enabled = !physical && _logicalMarkerVisible;
++            if (_marker != null) _marker.localScale = Vector3.one * (physical ? 0.006f : MarkerRadius * 2f);
++            SetPrecisionSolver(physical);
++            Vector3 rate = cmd.MoveClutch ? ToWorldRate(cmd.TranslationRate) * MoveSpeed : Vector3.zero;
++            if (!physical)
++            {
++                _physicalInit = false;
++                _approachStage = -1;
++                _targetPos = ClampWorkspace(_targetPos + rate * dt);
++                _smoothedPos = Vector3.SmoothDamp(_smoothedPos, _targetPos, ref _smoothVel,
++                    Mathf.Max(0.001f, PositionSmoothTime), Mathf.Infinity, dt);
++                Ik.target.position = _smoothedPos;
++                Ik.approachDirection = axis;
++                if (_marker != null) _marker.position = _smoothedPos;
++                return;
++            }
++            Vector3 actual = Torch.ArcOriginPosition;
++            Vector3 offset = actual - Ik.endEffector.position;
++            if (!_physicalInit)
++            {
++                _physicalTarget = _targetPos + offset;
++                _physicalSmooth = _physicalTarget;
++                _physicalVelocity = Vector3.zero;
++                _physicalInit = true;
++            }
++            if (Approaching && (!AssistanceAvailable || rate.sqrMagnitude > 0f || cmd.SparkHeld))
++                _approachStage = -1;
++            if (Approaching)
++            {
++                _approachTime += dt;
++                Vector3 destination = _approachStage == 0 ? _approachLift :
++                    _approachPoint + _approachHand * (_approachStage == 1 ? 0.08f : DesiredArcGap);
++                if (_approachStage > 0)
++                {
++                    axis = LimitTilt(-_approachHand);
++                    if (_keyboard != null) _keyboard.SetOrientation(Quaternion.FromToRotation(BaseApproach.normalized, axis));
++                }
++                _physicalTarget = Vector3.MoveTowards(_physicalTarget, destination, ApproachSpeed * dt);
++                if (Vector3.Distance(actual, destination) < 0.005f)
++                {
++                    if (++_approachStage > 2) _approachStage = -1;
++                    _approachTime = 0f;
++                }
++                if (_approachTime > 12f)
++                {
++                    Debug.LogWarning("[AyudaPunta] Timeout etapa=" + _approachStage + " punta=" + actual +
++                        " destino=" + destination + " objetivo=" + _physicalTarget + " TCP=" + Ik.endEffector.position);
++                    AssistMessage = "NO SE PUDO ACERCAR â€” mover y volver a pulsar B";
++                    _physicalTarget = actual;
++                    _approachStage = -1;
++                }
++            }
++            else if (rate.sqrMagnitude > 0f)
++            {
++                // No acumular un destino lejano si el brazo no puede seguirlo.
++                _physicalTarget = actual + Vector3.ClampMagnitude(_physicalTarget - actual, MaximumManualLead);
++                _physicalTarget += rate * dt;
++            }
++            if (AssistanceAvailable && !Approaching && cmd.SparkHeld && !Torch.Stuck &&
++                NearestSeam(_physicalTarget, out Vector3 point, out Vector3 normal, out Vector3 tangent))
++            {
++                Vector3 hand = -Torch.PointingDir;
++                float dot = Vector3.Dot(hand, normal);
++                Vector3 lateral = Vector3.ProjectOnPlane(_physicalTarget - point, normal);
++                float height = Vector3.Dot(_physicalTarget - point, normal);
++                if (dot > 0.3f && lateral.magnitude < 0.012f && height > -0.003f && height < 0.025f)
++                {
++                    // Centrado suave sobre el trazo interpolado, sin avance automatico.
++                    // Soltar el arco permite alejarse libremente de la guia.
++                    _physicalTarget -= Vector3.ClampMagnitude(lateral, 0.012f * dt);
++                    // La guia puede estar elevada sobre la chapa: regular con el
++                    // sensor real, no confundir esa altura visual con arco fisico.
++                    if (Torch.HasArcSurface && Torch.ArcLenMm < 40f)
++                    {
++                        float error = Torch.ArcLenMm * 0.001f - DesiredArcGap;
++                        _physicalTarget += Torch.PointingDir * Mathf.Clamp(error * 4f * dt, -0.01f * dt, 0.01f * dt);
++                    }
++                    UsedTrainingAssistance = true;
++                }
++            }
++            _physicalTarget = GuardSurface(actual, _physicalTarget);
++            _physicalSmooth = Vector3.SmoothDamp(_physicalSmooth, _physicalTarget, ref _physicalVelocity,
++                Mathf.Max(0.08f, PositionSmoothTime), Mathf.Infinity, dt);
++            _physicalSmooth = GuardSurface(actual, _physicalSmooth);
++            _smoothedPos = ClampWorkspace(_physicalSmooth - offset);
++            _targetPos = _smoothedPos;
++            _physicalSmooth = _smoothedPos + offset;
++            Ik.target.position = _smoothedPos;
++            Ik.approachDirection = axis;
++            if (_marker != null) _marker.position = _physicalSmooth;
++        }
++
++        public bool BeginAssistedApproach()
++        {
++            if (!AssistanceAvailable || Torch == null || Torch.SparkRequested || Torch.Stuck ||
++                !NearestSeam(Torch.ArcOriginPosition, out _approachPoint, out Vector3 normal, out Vector3 tangent)) return false;
++            Vector3 side = Vector3.Cross(normal, tangent).normalized;
++            _approachHand = (normal + tangent * Mathf.Tan(Task.Seam.IdealTravelAngle * Mathf.Deg2Rad) +
++                side * Mathf.Tan(Task.Seam.IdealWorkAngle * Mathf.Deg2Rad)).normalized;
++            if (Vector3.Angle(-_approachHand, Vector3.down) > MaxTiltFromVertical) return false;
++            _physicalTarget = _physicalSmooth = Torch.ArcOriginPosition;
++            _physicalVelocity = Vector3.zero;
++            _physicalInit = true;
++            // La pose inicial puede estar dentro del radio minimo del TCP.
++            // Retirada alcanzable: no esperar indefinidamente un punto limitado.
++            Vector3 offset = Torch.ArcOriginPosition - Ik.endEffector.position;
++            _approachLift = ClampWorkspace(Torch.ArcOriginPosition + Vector3.up * 0.08f - offset) + offset;
++            AssistMessage = "";
++            _approachTime = 0f;
++            _approachStage = 0;
++            UsedTrainingAssistance = true;
++            return true;
++        }
++
++        public bool NearestSeam(Vector3 position, out Vector3 point, out Vector3 normal, out Vector3 tangent)
++        {
++            point = Vector3.zero; normal = Vector3.up; tangent = Vector3.right;
++            WeldSeam seam = Task != null ? Task.Seam : null;
++            if (seam == null || seam.Count < 2) return false;
++            float best = float.PositiveInfinity;
++            int segments = seam.Shape == SeamShape.Circle ? seam.Count : seam.Count - 1;
++            for (int i = 0; i < segments; i++)
++            {
++                int j = (i + 1) % seam.Count;
++                Vector3 a = seam.PointAt(i), d = seam.PointAt(j) - a;
++                float t = d.sqrMagnitude > 1e-10f ? Mathf.Clamp01(Vector3.Dot(position - a, d) / d.sqrMagnitude) : 0f;
++                Vector3 candidate = a + d * t;
++                float distance = (candidate - position).sqrMagnitude;
++                if (distance >= best) continue;
++                best = distance; point = candidate;
++                normal = Vector3.Lerp(seam.NormalAt(i), seam.NormalAt(j), t).normalized;
++                tangent = Vector3.Lerp(seam.TangentAt(i), seam.TangentAt(j), t).normalized;
++            }
++            return true;
++        }
++
++        public Vector3 GuardSurface(Vector3 origin, Vector3 destination)
++        {
++            Vector3 delta = destination - origin;
++            float length = delta.magnitude;
++            if (length < 1e-6f) return destination;
++            int count = Physics.RaycastNonAlloc(origin, delta / length, _motionHits,
++                length + 0.003f, ~0, QueryTriggerInteraction.Ignore);
++            float allowed = length;
++            for (int i = 0; i < count; i++)
++            {
++                Transform hit = _motionHits[i].transform;
++                if (Torch != null && Torch.IgnoreRoot != null && hit.IsChildOf(Torch.IgnoreRoot)) continue;
++                if (hit.gameObject.layer == 5 || hit == Ik.target || hit == _marker) continue;
++                allowed = Mathf.Min(allowed, Mathf.Max(0f, _motionHits[i].distance - 0.003f));
++            }
++            return origin + delta / length * allowed;
+         }
+ 
+         Vector3 ToWorldRate(Vector3 rate)
+--- antes/Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
++++ actual/Assets\FrankaVR\V6\Course\CourseWorldMenuV6.cs
+@@ -161,7 +161,8 @@
+                 body = "ROBOT  WASD/QE: mover Â· IJKL/UO: orientar\n" +
+                     "ARCO   Espacio: soldar Â· R: reponer\n" +
+                     "Tab: tipo Â· [ / ]: amperaje Â· H: careta\n" +
+-                    "Ctrl: movimiento y orientacion finos\n" +
++                    "B: acercar a costura (practica) Â· mover: cancelar\n" +
++                    "Ctrl: fino Â· Shift: rapido Â· con arco: lento\n" +
+                     "VISTA  Flechas/Pag Â· Mouse derecho: mirar\n" +
+                     "Rueda: zoom Â· Retroceso: restaurar zoom\n" +
+                     "N/P: estaciones Â· N5 practica: Z/X gira caÃ±o\n" +
+--- antes/Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
++++ actual/Assets\FrankaVR\V6\VR\VRTrainingHUDV6.cs
+@@ -34,9 +34,11 @@
+         Renderer _bg, _alertBg;
+         Material _bgMat, _alertMat;
+         GazeButton _pipeBack, _pipeForward;
++        WeldingTeleopController _teleop;
+ 
+         void Start()
+         {
++            _teleop = FindAnyObjectByType<WeldingTeleopController>();
+             Resolve();
+             Build();
+             GazeInteractor pointer = FindFirstObjectByType<GazeInteractor>();
+@@ -155,7 +157,7 @@
+             if (running && !ShowHelpDuringRunning)
+             {
+                 string keys = Course != null && Course.UsesPipeIndexer ? "Z/X: girar caÃ±o Â· " : "";
+-                SetText(_help, keys + "F: finalizar Â· F1: ayuda", Width * 0.90f, 0.045f);
++                SetText(_help, keys + (Course.Mode == CourseModeV5.Training ? "B: acercar punta Â· " : "") + "F: finalizar Â· F1: ayuda", Width * 0.90f, 0.045f);
+             }
+             else
+             {
+@@ -172,6 +174,8 @@
+         {
+             if (Torch == null) return "";
+             if (Course != null && Course.Phase != CoursePhaseV5.Running) return "";
++            if (_teleop != null && _teleop.Approaching) return "ACERCANDO PUNTA â€” B o mover para cancelar";
++            if (_teleop != null && !string.IsNullOrEmpty(_teleop.AssistMessage)) return _teleop.AssistMessage;
+             if (Torch.State == ArcState.Stuck) return "ELECTRODO PEGADO â€” SEPARAR HERRAMIENTA";
+             if (Machine != null && Machine.ThermalTripped) return "PROTECCION TERMICA â€” ESPERAR ENFRIAMIENTO";
+             if (Torch.RemainingMm <= Torch.StubLengthMm + 10f) return "VARILLA CASI AGOTADA â€” CAMBIAR ELECTRODO";

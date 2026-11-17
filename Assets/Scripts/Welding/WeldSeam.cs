@@ -36,6 +36,9 @@ namespace FrankaVR.Welding
         public float DepositRadius = 0.008f; // m: radio de influencia del arco
         public float IdealTravelAngle = 12f;
         public float IdealWorkAngle   = 0f;
+        [Tooltip("La costura avanza al reves que la orden original: el lado (n x t) se invierte " +
+                 "y el angulo de trabajo cambia de signo para conservar la misma inclinacion fisica.")]
+        public bool ReverseWorkSide = false;
         public float AngleToleranceDeg = 12f;
 
         [Header("Enfriamiento")]
@@ -104,6 +107,21 @@ namespace FrankaVR.Welding
         }
 
         public SeamPoint Get(int i) => _pts[i];
+
+        /// Giro de la pieza N5 sin reconstruir ni perder energia/calidad depositada.
+        public void RotateCircleSamples(float degrees)
+        {
+            if (Shape != SeamShape.Circle || _pts == null) return;
+            Vector3 center = CircleCenter ? CircleCenter.position : transform.position;
+            Quaternion rotation = Quaternion.AngleAxis(degrees, CircleAxis.normalized);
+            for (int i = 0; i < _pts.Length; i++)
+            {
+                _pts[i].Pos = center + rotation * (_pts[i].Pos - center);
+                _pts[i].Normal = rotation * _pts[i].Normal;
+                _pts[i].Tangent = rotation * _pts[i].Tangent;
+            }
+            Dirty = true;
+        }
         public Vector3 PointAt(int i) => _pts[i].Pos;
         public Vector3 NormalAt(int i) => _pts[i].Normal;
         public Vector3 TangentAt(int i) => _pts[i].Tangent;
@@ -193,7 +211,7 @@ namespace FrankaVR.Welding
             Shape              = wo.Shape;
             ThicknessMm        = wo.ThicknessMm;
             IdealTravelAngle   = wo.IdealTravelAngle;
-            IdealWorkAngle     = wo.IdealWorkAngle;
+            IdealWorkAngle     = ReverseWorkSide ? -wo.IdealWorkAngle : wo.IdealWorkAngle;
             AngleToleranceDeg  = wo.AngleToleranceDeg;
             if (wo.Shape == SeamShape.Circle) CircleRadius = wo.PipeRadiusM;
             Build();

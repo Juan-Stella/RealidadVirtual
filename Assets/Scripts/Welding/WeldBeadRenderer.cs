@@ -2,13 +2,11 @@ using UnityEngine;
 
 namespace FrankaVR.Welding
 {
-    /// Genera la malla del cordon de soldadura en tiempo real a partir del estado de la
-    /// costura. Cada punto con energia produce un anillo de vertices; los anillos
-    /// consecutivos se unen formando un tubo. El color por vertice codifica el
-    /// resultado (calidad) mezclado con el brillo del metal caliente.
-    ///
-    /// Usar con el shader FrankaVR/WeldBead (unlit + vertex color) para que se vea el
-    /// naranja incandescente sin depender de iluminacion.
+    /// <summary>
+    /// Cordon SMAW visualmente mas legible: seccion eliptica (ancho > altura), ondulacion
+    /// tipo "stack of dimes" y presencia visible desde los primeros joules depositados.
+    /// No modifica la evaluacion de calidad ni la fisica del proceso: solo el render.
+    /// </summary>
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
     public class WeldBeadRenderer : MonoBehaviour
@@ -17,30 +15,49 @@ namespace FrankaVR.Welding
         public WeldSeam Seam;
 
         [Header("Forma del cordon")]
-        [Tooltip("Vertices por anillo. 6 alcanza y es barato para mobile.")]
-        public int RingSegments = 6;
-        public float MinRadius = 0.0015f;
-        public float MaxRadius = 0.005f;
-        [Tooltip("Cuanto sobresale el cordon de la superficie.")]
-        public float Lift = 0.0012f;
+        [Range(6, 16)] public int RingSegments = 10;
+        [Tooltip("Semiancho minimo visible del cordon.")]
+        public float MinHalfWidth = 0.0045f;   // 9 mm total
+        [Tooltip("Semiancho maximo visual.")]
+        public float MaxHalfWidth = 0.0090f;   // 18 mm total
+        [Tooltip("Altura minima sobre la chapa.")]
+        public float MinHeight = 0.0014f;
+        [Tooltip("Altura maxima sobre la chapa.")]
+        public float MaxHeight = 0.0032f;
+        [Tooltip("Eleva levemente la seccion para evitar z-fighting con la chapa.")]
+        public float Lift = 0.0008f;
+        [Tooltip("Energia minima para que empiece a verse material depositado.")]
+        public float VisibleEnergyJ = 1.0f;
+
+        [Header("Textura geometrica")]
+        [Range(0f, 0.40f)] public float RippleStrength = 0.18f;
+        [Tooltip("Ondas visuales a lo largo del cordon.")]
+        public float RippleFrequency = 0.85f;
+        public float RipplePitchM = 0.010f;
+        public bool UseDomeProfile = true;
+        public bool ProjectOnWorkpiece = true;
+        public LayerMask SurfaceMask = 1 << 6;
+        [Range(0f, 0.30f)] public float SideIrregularity = 0.08f;
+        [Range(0f, 0.25f)] public float HeightIrregularity = 0.07f;
 
         [Header("Color")]
-        public Color HotColor = new Color(1f, 0.55f, 0.12f, 1f);
-        public Color WhiteHot = new Color(1f, 0.92f, 0.7f, 1f);
+        public Color HotColor = new Color(1f, 0.42f, 0.05f, 1f);
+        public Color WhiteHot = new Color(1f, 0.96f, 0.80f, 1f);
+        public Color ColdMetalColor = new Color(0.24f, 0.25f, 0.27f, 1f);
+        [Range(0f, 1f)] public float QualityTintStrength = 0.38f;
 
         Mesh _mesh;
         MeshFilter _mf;
-
         Vector3[] _verts;
-        Color[]   _cols;
-        int[]     _tris;
+        Color[] _cols;
+        int[] _tris;
         int _cachedPoints = -1, _cachedSegs = -1;
+        bool _cachedClosed;
 
         void Awake()
         {
             _mf = GetComponent<MeshFilter>();
-            _mesh = new Mesh();
-            _mesh.name = "WeldBead";
+            _mesh = new Mesh { name = "WeldBead" };
             _mesh.MarkDynamic();
             if (_mf != null) _mf.mesh = _mesh;
         }
@@ -54,22 +71,22 @@ namespace FrankaVR.Welding
             Seam.Dirty = false;
         }
 
-        /// Reserva los buffers una sola vez mientras no cambie la cantidad de puntos.
         void EnsureBuffers(int points, int segs)
         {
-            if (_cachedPoints == points && _cachedSegs == segs) return;
+            bool closed = Seam.Shape == SeamShape.Circle;
+            if (_cachedPoints == points && _cachedSegs == segs && _cachedClosed == closed) return;
 
             int vcount = points * segs;
-            int tcount = (points - 1) * segs * 6;
+            int spans = closed ? points : points - 1;
+            int tcount = spans * segs * 6;
             _verts = new Vector3[vcount];
-            _cols  = new Color[vcount];
-            _tris  = new int[tcount];
+            _cols = new Color[vcount];
+            _tris = new int[tcount];
 
-            // La topologia es fija: solo se recalculan posiciones y colores por frame.
             int k = 0;
-            for (int i = 0; i < points - 1; i++)
+            for (int i = 0; i < spans; i++)
             {
-                int a = i * segs, b = (i + 1) * segs;
+                int a = i * segs, b = ((i + 1) % points) * segs;
                 for (int s = 0; s < segs; s++)
                 {
                     int s2 = (s + 1) % segs;
@@ -77,54 +94,92 @@ namespace FrankaVR.Welding
                     _tris[k++] = a + s2; _tris[k++] = b + s;  _tris[k++] = b + s2;
                 }
             }
+
             _cachedPoints = points;
             _cachedSegs = segs;
+            _cachedClosed = closed;
             if (_mesh != null) _mesh.Clear();
         }
 
         void Rebuild()
         {
             int n = Seam.Count;
-            int segs = Mathf.Max(3, RingSegments);
+            int segs = Mathf.Max(6, RingSegments);
             EnsureBuffers(n, segs);
 
+            float distanceAlong = 0f;
             for (int i = 0; i < n; i++)
             {
                 SeamPoint sp = Seam.Get(i);
+                if (i > 0) distanceAlong += Vector3.Distance(sp.Pos, Seam.PointAt(i - 1));
                 WeldQuality q = Seam.QualityAt(i);
+                bool hasMetal = sp.Energy >= VisibleEnergyJ;
 
-                float w = Seam.BeadWidth01(i);
-                float radius = q == WeldQuality.None ? 0f : Mathf.Lerp(MinRadius, MaxRadius, w);
-                // La perforacion no engorda el cordon: lo hunde.
-                if (q == WeldQuality.BurnThrough) radius = MinRadius * 0.6f;
+                // sqrt hace que el cordon gane presencia visual temprano sin modificar la energia real.
+                float w = hasMetal ? Mathf.Sqrt(Mathf.Clamp01(Seam.BeadWidth01(i))) : 0f;
+                float halfWidth = hasMetal ? Mathf.Lerp(MinHalfWidth, MaxHalfWidth, w) : 0f;
+                float height = hasMetal ? Mathf.Lerp(MinHeight, MaxHeight, w) : 0f;
+
+                if (q == WeldQuality.BurnThrough)
+                {
+                    halfWidth = Mathf.Max(MinHalfWidth * 0.65f, halfWidth * 0.72f);
+                    height = Mathf.Max(0.0005f, height * 0.35f);
+                }
+
+                float phase = RipplePitchM > 0f
+                    ? distanceAlong / RipplePitchM * Mathf.PI * 2f
+                    : i * RippleFrequency * Mathf.PI * 2f;
+                float ripple = 1f + RippleStrength * Mathf.Sin(phase);
+                halfWidth *= Mathf.Max(0.62f, ripple);
+                height *= Mathf.Max(0.72f, 1f + HeightIrregularity * Mathf.Sin(phase + 1.1f));
 
                 Vector3 n0 = sp.Normal.normalized;
                 Vector3 t0 = sp.Tangent.normalized;
                 Vector3 b0 = Vector3.Cross(n0, t0).normalized;
-                Vector3 center = sp.Pos + n0 * (q == WeldQuality.BurnThrough ? -Lift : Lift);
+                if (b0.sqrMagnitude < 1e-8f) b0 = Vector3.right;
 
-                // Color: calidad de base, mezclada hacia incandescente segun temperatura.
-                Color baseCol = WeldingHeatModel.QualityColor(q);
+                float side = hasMetal ? SideIrregularity * halfWidth * Mathf.Sin(i * 1.73f) : 0f;
+                Vector3 surface = sp.Pos;
+                float lift = Lift;
+                if (ProjectOnWorkpiece && Physics.Raycast(sp.Pos + n0 * 0.01f, -n0, out RaycastHit hit,
+                    0.03f, SurfaceMask, QueryTriggerInteraction.Ignore))
+                { surface = hit.point; lift = 0.0002f; }
+                Vector3 center = surface
+                    + n0 * (q == WeldQuality.BurnThrough ? -lift : lift)
+                    + b0 * side;
+
+                Color quality = WeldingHeatModel.QualityColor(q);
+                Color baseCol = Color.Lerp(ColdMetalColor, quality, QualityTintStrength);
                 float temp = sp.Temp;
-                Color hot = Color.Lerp(HotColor, WhiteHot, Mathf.Clamp01((temp - 0.6f) / 0.4f));
+                Color hot = Color.Lerp(HotColor, WhiteHot, Mathf.Clamp01((temp - 0.50f) / 0.50f));
                 Color col = Color.Lerp(baseCol, hot, temp);
+                if (!hasMetal) col.a = 0f;
 
                 int off = i * segs;
                 for (int s = 0; s < segs; s++)
                 {
                     float a = (s / (float)segs) * 2f * Mathf.PI;
-                    Vector3 radial = b0 * Mathf.Cos(a) + n0 * Mathf.Sin(a);
-                    _verts[off + s] = transform.InverseTransformPoint(center + radial * radius);
-                    _cols[off + s]  = col;
+                    // Seccion eliptica: ancha sobre la chapa y baja en la normal.
+                    float rise = UseDomeProfile ? Mathf.Max(0f, Mathf.Sin(a)) : Mathf.Sin(a);
+                    Vector3 radial = b0 * (Mathf.Cos(a) * halfWidth) + n0 * (rise * height);
+                    _verts[off + s] = transform.InverseTransformPoint(center + radial);
+                    _cols[off + s] = col;
                 }
             }
 
             _mesh.Clear();
-            _mesh.vertices  = _verts;
-            _mesh.colors    = _cols;
+            _mesh.vertices = _verts;
+            _mesh.colors = _cols;
             _mesh.triangles = _tris;
             _mesh.RecalculateNormals();
             _mesh.RecalculateBounds();
+        }
+
+        void OnDestroy()
+        {
+            if (_mesh == null) return;
+            if (Application.isPlaying) Destroy(_mesh);
+            else DestroyImmediate(_mesh);
         }
     }
 }
