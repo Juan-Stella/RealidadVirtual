@@ -1,6 +1,6 @@
 # FrankaVR — actualización y traspaso a otra IA
 
-> **Actualización posterior:** este traspaso fue redactado antes del trabajo de Claude incorporado en `52fcd48`. Para el estado actual, leer primero `CONTROL_Y_PORTAELECTRODO_20261117.md` y `README.md`: hay correcciones de porta-electrodo, control, HUD y entorno, y pruebas de Editor posteriores aprobadas. Las advertencias sobre tareas incompletas de abajo describen el estado anterior.
+> **Actualización posterior:** este traspaso fue redactado antes del trabajo de Claude incorporado en `7b6a0c4` (antes `52fcd48`, previo a corregir la autoría Git). Para el estado actual, leer primero `CONTROL_Y_PORTAELECTRODO_20261117.md` y `README.md`: hay correcciones de porta-electrodo, control, HUD y entorno, y pruebas de Editor posteriores aprobadas. Las advertencias sobre tareas incompletas de abajo describen el estado anterior.
 
 **Fecha de este documento: 17 de noviembre de 2026.**
 

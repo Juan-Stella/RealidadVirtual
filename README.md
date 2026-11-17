@@ -4,6 +4,8 @@ Simulador didáctico de soldadura SMAW con robot Franka Panda, desarrollado en U
 
 ## Abrir el proyecto
 
+Para instalar desde cero, probar en PC, preparar Android y colaborar con Git: **[Guía de instalación y trabajo en equipo](GUIA_INSTALACION_Y_COLABORACION.md)**.
+
 1. Clonar este repositorio.
 2. Agregar su carpeta raíz a Unity Hub con Unity **6000.5.10f1**.
 3. Esperar la importación y resolución de paquetes; Cardboard y URDF Importer requieren acceso a sus repositorios Git.
@@ -11,7 +13,7 @@ Simulador didáctico de soldadura SMAW con robot Franka Panda, desarrollado en U
 
 ## Estado actual
 
-El commit `52fcd48` incorpora el trabajo más reciente de Claude: porta-electrodo orientado hacia la pieza, control sobre la costura, protección del codo, HUD con información de proceso y escenografía industrial `FactoryLineScenery`.
+El commit `7b6a0c4` incorpora el trabajo más reciente de Claude: porta-electrodo orientado hacia la pieza, control sobre la costura, protección del codo, HUD con información de proceso y escenografía industrial `FactoryLineScenery`.
 
 Consultar primero **[CONTROL_Y_PORTAELECTRODO_20261117.md](CONTROL_Y_PORTAELECTRODO_20261117.md)**. Ese informe registra pruebas de Editor aprobadas y un cordón N1 con 58/60 puntos correctos. Los builds Windows/Android nuevos y las sesiones manuales completas N2–N5 siguen pendientes según ese informe. La limpieza del repositorio no ejecutó nuevas pruebas de Unity ni modificó el proyecto activo.
 
@@ -28,7 +30,9 @@ Consultar primero **[CONTROL_Y_PORTAELECTRODO_20261117.md](CONTROL_Y_PORTAELECTR
 
 ## Backup local y limpieza
 
-Por pedido del usuario, se eliminaron del disco los backups anteriores y los paquetes históricos V4/V5/V6 que se habían apartado en `_ArchivoLocal`. Se conserva un único backup completo del proyecto activo en `_Backups/Estado_actual_20261117/`, con Assets, Packages, ProjectSettings y documentación. Está ignorado por Git y no se obtiene al clonar. Los commits anteriores conservan el material que ya estaba versionado; no se reescribió el historial.
+Por pedido del usuario, se eliminaron del disco los backups anteriores y los paquetes históricos V4/V5/V6 que se habían apartado en `_ArchivoLocal`. Se conserva un único backup completo del proyecto activo en `_Backups/Estado_actual_20261117/`, con Assets, Packages, ProjectSettings y documentación. Está ignorado por Git y no se obtiene al clonar. Los commits anteriores conservan el material que ya estaba versionado.
+
+El 17/11/2026 se corrigió la identidad de seis commits que usaban `tu@email.com` y GitHub atribuía a `marjosavi481`. Se conservaron contenido, mensajes, fechas y coautorías, con una copia recuperable del historial anterior en el backup local. Los identificadores cambiaron: si ya habías clonado, consultá el aviso de la guía antes de actualizar. Se comprobó con acceso administrador que esa cuenta no era colaboradora del repositorio.
 
 La limpieza preserva byte por byte `Assets`, `Packages` y `ProjectSettings`; los 338 archivos de esas carpetas se verificaron contra el backup y su manifiesto `Integridad_SHA256.csv`. Se retiró del seguimiento `FrankaVR.slnx`, generado por Unity, manteniendo su copia local. Las rutas a backups anteriores que aparecen en documentos históricos ya no existen localmente.
 
