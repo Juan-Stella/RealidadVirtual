@@ -36,6 +36,16 @@ namespace FrankaVR.Teleop
         public bool InvertVertical = false;
         public bool InvertForward = false;
 
+        [Header("Joystick del mando ESP32 (traslacion)")]
+        [Tooltip("Velocidad maxima con el joystick a fondo (misma escala que el teclado: 0.2 lento, 0.5 crucero).")]
+        public float JoystickMaxRate = 0.5f;
+        [Tooltip("Curva de respuesta. >1 da mas precision cerca del centro.")]
+        [Range(1f, 3f)] public float JoystickExponent = 1.6f;
+        public bool InvertJoystickX = false;
+        public bool InvertJoystickY = false;
+        [Tooltip("Si el joystick deja de transmitir, se detiene el movimiento.")]
+        public float JoystickTimeoutSec = 0.35f;
+
         [Header("Seguridad / conexion")]
         [Tooltip("Si la mano principal deja de transmitir, se libera el clutch.")]
         public float PrimaryTimeoutSec = 0.35f;
@@ -49,7 +59,10 @@ namespace FrankaVR.Teleop
         public bool SparkHeld;
         public float PacketAgeSec;
         public Vector3 CurrentRate;
+        public Vector2 JoystickAxes;
+        public bool JoystickVertical;
 
+        float _lastJoystickTime = -999f;
         Quaternion _rawImu = Quaternion.identity;
         Quaternion _zeroImu = Quaternion.identity;
         Quaternion _clutchRef = Quaternion.identity;
@@ -128,9 +141,15 @@ namespace FrankaVR.Teleop
                 rate = Vector3.Scale(rate, TranslationAxisScale);
                 rate = Vector3.ClampMagnitude(rate, 1f);
             }
+            else
+            {
+                // Mando ESP32: la IMU solo orienta y el joystick traslada.
+                rate = JoystickRate();
+            }
 
             _prevClutch = ClutchHeld;
             CurrentRate = rate;
+            bool moveEnabled = ClutchHeld || JoystickFresh;
 
             return new TeleopCommand
             {
@@ -142,8 +161,39 @@ namespace FrankaVR.Teleop
                 ReplaceElectrode = Consume(ref _replaceEdge),
                 ToggleHelmet = Consume(ref _helmetEdge),
                 ResetOrientation = Consume(ref _resetOrientationEdge),
-                MoveClutch = ClutchHeld
+                MoveClutch = moveEnabled
             };
+        }
+
+        /// <summary>True si llegaron paquetes JOY recientes.</summary>
+        public bool JoystickFresh =>
+            (Time.unscaledTime - _lastJoystickTime) <= Mathf.Max(0.05f, JoystickTimeoutSec);
+
+        /// <summary>
+        /// Velocidad pedida por el joystick, en la misma convencion que TranslationRate:
+        /// X lateral, Y vertical, Z adelante. Con el boton del joystick apretado, el eje Y
+        /// del stick mueve en altura en vez de adelante/atras.
+        /// </summary>
+        public Vector3 JoystickRate()
+        {
+            if (!JoystickFresh) return Vector3.zero;
+            float x = ShapeJoystick(InvertJoystickX ? -JoystickAxes.x : JoystickAxes.x);
+            float y = ShapeJoystick(InvertJoystickY ? -JoystickAxes.y : JoystickAxes.y);
+            Vector3 rate = JoystickVertical ? new Vector3(x, y, 0f) : new Vector3(x, 0f, y);
+            return Vector3.ClampMagnitude(rate, 1f) * JoystickMaxRate;
+        }
+
+        float ShapeJoystick(float v)
+        {
+            return Mathf.Sign(v) * Mathf.Pow(Mathf.Clamp01(Mathf.Abs(v)), JoystickExponent);
+        }
+
+        /// <summary>Paquete JOY del mando ESP32 (zona muerta ya aplicada en el firmware).</summary>
+        public void OnJoystick(float x, float y, bool vertical)
+        {
+            JoystickAxes = new Vector2(x, y);
+            JoystickVertical = vertical;
+            _lastJoystickTime = Time.unscaledTime;
         }
 
         float ShapeAxis(float deg)

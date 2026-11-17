@@ -70,6 +70,19 @@ namespace FrankaVR.Teleop
             // Movimiento/orientacion: una sola fuente a la vez.
             TeleopCommand result = GloveMotionActive ? gloveCmd : keyboardCmd;
 
+            // Mando ESP32 sin IMU (o IMU desconectada): el joystick igual traslada y la
+            // orientacion sigue saliendo del teclado.
+            if (!GloveMotionActive && Glove != null)
+            {
+                Vector3 joystick = Glove.JoystickRate();
+                if (joystick != Vector3.zero)
+                {
+                    result.TranslationRate = joystick;
+                    result.MoveClutch = true;
+                    ActiveMotionSource = "Teclado + joystick";
+                }
+            }
+
             // Acciones discretas: permitimos teclado Y botonera para facilitar pruebas.
             result.SparkHeld = keyboardCmd.SparkHeld || gloveCmd.SparkHeld;
             result.AmperageStep = Mathf.Clamp(keyboardCmd.AmperageStep + gloveCmd.AmperageStep, -1, 1);
