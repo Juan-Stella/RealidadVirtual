@@ -23,7 +23,6 @@ Consultar primero **[CONTROL_Y_PORTAELECTRODO_20261117.md](CONTROL_Y_PORTAELECTR
 
 - `Assets/`: escenas, scripts, modelos, materiales y sus `.meta`.
 - `Packages/` y `ProjectSettings/`: dependencias y configuración.
-- `Firmware/FrankaVR_Mando/`: firmware Arduino del mando ESP32 (joystick, 5 botones, IMU MPU-6500) que envía por WiFi UDP. Cableado y uso en **[MANDO_ESP32.md](MANDO_ESP32.md)**.
 - `Verificacion/`: reportes y diagnósticos; leer el informe correspondiente para distinguir pruebas antiguas y recientes.
 - Documentación y scripts `Verificar_control.bat` / `Verificar_entorno.bat`.
 

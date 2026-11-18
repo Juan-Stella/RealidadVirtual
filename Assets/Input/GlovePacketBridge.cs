@@ -14,18 +14,14 @@ namespace FrankaVR.Teleop
     /// Formatos CSV soportados:
     ///   IMU,qw,qx,qy,qz,clutch
     ///   BTN,spark,ampPlus,ampMinus,cycle,replace,helmet,resetOrientation[,recenter,nextView,calibrate]
-    ///   JOY,x,y,vertical   (joystick del mando ESP32: x,y en -1..1; vertical=1 -> y mueve en altura)
     ///
     /// Todos los booleanos pueden ser 0/1 o true/false.
-    /// El mando ESP32 llega por WiFi mediante UdpControllerReceiver, que se agrega solo.
     /// </summary>
     public class GlovePacketBridge : MonoBehaviour
     {
         public BleGloveInput Glove;
         public ViewpointManager Viewpoints;
         public bool LogPackets = false;
-        [Tooltip("Agrega UdpControllerReceiver para recibir el mando ESP32 por WiFi.")]
-        public bool EnableUdpController = true;
 
         bool _prevRecenter, _prevNextView, _prevCalibrate;
 
@@ -33,8 +29,6 @@ namespace FrankaVR.Teleop
         {
             if (Glove == null) Glove = FindObjectOfType<BleGloveInput>();
             if (Viewpoints == null) Viewpoints = FindObjectOfType<ViewpointManager>();
-            if (EnableUdpController && Application.isPlaying && GetComponent<UdpControllerReceiver>() == null)
-                gameObject.AddComponent<UdpControllerReceiver>().Bridge = this;
         }
 
         public void OnBleMessage(string message)
@@ -50,7 +44,6 @@ namespace FrankaVR.Teleop
                 string kind = p[0].Trim().ToUpperInvariant();
                 if (kind == "IMU") ParseImu(p);
                 else if (kind == "BTN") ParseButtons(p);
-                else if (kind == "JOY") ParseJoystick(p);
             }
             catch (Exception ex)
             {
@@ -104,13 +97,6 @@ namespace FrankaVR.Teleop
             _prevRecenter = recenter;
             _prevNextView = nextView;
             _prevCalibrate = calibrate;
-        }
-
-        void ParseJoystick(string[] p)
-        {
-            if (Glove == null) return;
-            if (p.Length != 4) throw new FormatException("JOY requiere x,y,vertical");
-            Glove.OnJoystick(Mathf.Clamp(F(p[1]), -1f, 1f), Mathf.Clamp(F(p[2]), -1f, 1f), B(p[3]));
         }
 
         static float F(string s)
