@@ -16,6 +16,7 @@ Shader "FrankaVR/Text3D"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 3.0
             #include "UnityCG.cginc"
             sampler2D _MainTex;
             float4 _MainTex_ST;
@@ -31,8 +32,16 @@ Shader "FrankaVR/Text3D"
             }
             fixed4 frag (v2f i) : SV_Target
             {
+                // Supermuestreo de 4 muestras (la fuente dinamica no tiene mipmaps): carteles
+                // lejanos sin bordes titilantes. Mismo criterio que FrankaVR/UIText.
+                float2 dx = ddx(i.uv);
+                float2 dy = ddy(i.uv);
+                float a = tex2D(_MainTex, i.uv + dx * 0.125 + dy * 0.375).a
+                        + tex2D(_MainTex, i.uv - dx * 0.375 + dy * 0.125).a
+                        + tex2D(_MainTex, i.uv + dx * 0.375 - dy * 0.125).a
+                        + tex2D(_MainTex, i.uv - dx * 0.125 - dy * 0.375).a;
                 fixed4 c = i.color;
-                c.a *= tex2D(_MainTex, i.uv).a;
+                c.a *= saturate(a * 0.25);
                 return c;
             }
             ENDCG

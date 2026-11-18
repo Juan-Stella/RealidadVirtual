@@ -57,8 +57,7 @@ public class GazeButton : MonoBehaviour
         mesh.text = text;
         mesh.anchor = TextAnchor.MiddleCenter;
         mesh.alignment = TextAlignment.Center;
-        mesh.fontSize = 48;
-        mesh.characterSize = 0.007f;
+        FrankaVR.V6.CrispTextV6.Setup(mesh, 48, 0.007f);
         Renderer captionRenderer = caption.GetComponent<Renderer>();
         captionRenderer.sortingOrder = 10;
         Bounds b = captionRenderer.localBounds;

@@ -344,6 +344,7 @@ namespace FrankaVR.Welding
                 _smoothedPos = Vector3.SmoothDamp(_smoothedPos, _targetPos, ref _smoothVel,
                     Mathf.Max(0.001f, PositionSmoothTime), Mathf.Infinity, dt);
                 Ik.target.position = _smoothedPos;
+                Ik.SetTargetVelocity(_smoothVel);
                 Ik.approachDirection = axis;
                 if (_marker != null) _marker.position = _smoothedPos;
                 return;
@@ -493,6 +494,8 @@ namespace FrankaVR.Welding
             _targetPos = _smoothedPos;
             _physicalSmooth = _smoothedPos + offset;
             Ik.target.position = _smoothedPos;
+            // Prealimentacion del servo: la IK sigue esta velocidad sin esperar a acumular error.
+            Ik.SetTargetVelocity(_physicalVelocity);
             Ik.approachDirection = axis;
             if (_marker != null) _marker.position = _physicalSmooth;
             UpdateSeamTelemetry(actual, dt);

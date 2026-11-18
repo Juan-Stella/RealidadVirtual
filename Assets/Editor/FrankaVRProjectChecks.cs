@@ -287,13 +287,18 @@ public static class FrankaVRProjectChecks
         course.StartTraining();
         for (int i = 0; i < 3; i++) yield return null;
         Require(task.State == FrankaVR.Welding.SessionState.Running && GameObject.Find("SeamPathGuide").GetComponent<LineRenderer>().enabled, "La practica no muestra su guia");
-        var hud = One<VRTrainingHUDV6>();
-        hud.ShowHelpDuringRunning = true;
+        var menu = One<CourseWorldMenuV6>();
+        menu.SetControlsOpen(true);
         for (int i = 0; i < 3; i++) yield return null;
-        Require(GameObject.Find("CourseWorldMenuV6_Runtime") != null, "La ayuda no aparece durante practica");
+        GameObject controls = GameObject.Find("ControlesV6_Runtime");
+        Require(controls != null && controls.activeInHierarchy && GameObject.Find("VRTrainingHUDV6_Runtime") == null,
+            "El documento de CONTROLES no aparece (o el HUD queda encima)");
         CheckPanels();
-        Capture("06_ayuda");
-        hud.ShowHelpDuringRunning = false;
+        Capture("06_controles");
+        menu.SetControlsOpen(false);
+        for (int i = 0; i < 3; i++) yield return null;
+        Require(GameObject.Find("ControlesV6_Runtime") == null && GameObject.Find("VRTrainingHUDV6_Runtime") != null,
+            "CERRAR no oculta el documento de CONTROLES");
 
         IEnumerator reachAudit = AuditReach(course, task, teleop, torch);
         while (reachAudit.MoveNext()) yield return reachAudit.Current;
@@ -924,9 +929,10 @@ public static class FrankaVRProjectChecks
         foreach (TextMesh text in UnityEngine.Object.FindObjectsByType<TextMesh>())
         {
             string root = text.transform.root.name;
-            if (root != "VRTrainingHUDV6_Runtime" && root != "CourseWorldMenuV6_Runtime") continue;
+            if (root != "VRTrainingHUDV6_Runtime" && root != "CourseWorldMenuV6_Runtime" && root != "ControlesV6_Runtime") continue;
             Vector3 size = text.GetComponent<Renderer>().localBounds.size * text.transform.localScale.x;
-            Require(size.x <= (root.StartsWith("VRTraining") ? 1.18f : 0.90f) + 0.01f, "Texto fuera del panel: " + text.name);
+            float limit = root.StartsWith("VRTraining") ? 1.18f : root.StartsWith("Controles") ? 1.62f : 0.90f;
+            Require(size.x <= limit + 0.01f, "Texto fuera del panel: " + root + "/" + text.name);
         }
     }
 
