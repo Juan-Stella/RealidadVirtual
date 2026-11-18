@@ -616,7 +616,8 @@ namespace FrankaVR.Welding
         {
             MeasureArcLenMm();
             Electrode e = Machine != null ? Machine.Current : null;
-            bool consumed = RemainingMm <= StubLengthMm;
+            // Con alambre (MIG) el alimentador repone el stick-out: nunca se agota.
+            bool consumed = e != null && !e.WireFeed && RemainingMm <= StubLengthMm;
             bool tripped  = Machine != null && Machine.ThermalTripped;
 
             ArcQuality = (e != null) ? WeldingHeatModel.ArcLengthFactor(ArcLenMm, e) : 0f;

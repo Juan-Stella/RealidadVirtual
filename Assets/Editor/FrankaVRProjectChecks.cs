@@ -17,7 +17,9 @@ public static class FrankaVRProjectChecks
     const string ControlKey = "FrankaVR.ProjectChecks.ControlOnly";
     const string SceneryKey = "FrankaVR.ProjectChecks.SceneryOnly";
     const string SeamKey = "FrankaVR.ProjectChecks.SeamOnly";
+    const string HandKey = "FrankaVR.ProjectChecks.HandControllerOnly";
     static IEnumerator _steps;
+    static bool _handRun;
     static int _lastFrame = -1;
     static double _deadline;
 
@@ -53,13 +55,27 @@ public static class FrankaVRProjectChecks
         EditorApplication.EnterPlaymode();
     }
 
-    [MenuItem("FrankaVR/Verificacion/Cordon completo N1")]
+    [MenuItem("FrankaVR/Verificacion/Ensenar y ejecutar M1")]
     public static void RunSeamBatch()
     {
         EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
         UnityEditor.SessionState.SetBool(ControlKey, false);
         UnityEditor.SessionState.SetBool(SceneryKey, false);
         UnityEditor.SessionState.SetBool(SeamKey, true);
+        UnityEditor.SessionState.SetBool(RunningKey, true);
+        Subscribe();
+        EditorApplication.EnterPlaymode();
+    }
+
+    // Mando ESP32 simulado: paquetes CTL con el formato del firmware por UDP a 127.0.0.1.
+    [MenuItem("FrankaVR/Verificacion/Mando Wi-Fi (UDP)")]
+    public static void RunHandControllerBatch()
+    {
+        EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
+        UnityEditor.SessionState.SetBool(ControlKey, false);
+        UnityEditor.SessionState.SetBool(SceneryKey, false);
+        UnityEditor.SessionState.SetBool(SeamKey, false);
+        UnityEditor.SessionState.SetBool(HandKey, true);
         UnityEditor.SessionState.SetBool(RunningKey, true);
         Subscribe();
         EditorApplication.EnterPlaymode();
@@ -122,8 +138,11 @@ public static class FrankaVRProjectChecks
             bool controlOnly = UnityEditor.SessionState.GetBool(ControlKey, false);
             bool sceneryOnly = UnityEditor.SessionState.GetBool(SceneryKey, false);
             bool seamOnly = UnityEditor.SessionState.GetBool(SeamKey, false);
-            if (_steps == null) _steps = seamOnly ? SeamSmoke() : sceneryOnly ? ScenerySmoke() : controlOnly ? ControlSmoke() : Smoke();
-            if (!_steps.MoveNext()) Complete(true, seamOnly ? "Cordon completo N1 con teclas." : sceneryOnly ? "Capturas del entorno generadas." : controlOnly ? "Control de punta N1: aproximacion, avance, arco, orientacion, superficies y exclusion de examen verificados." :
+            bool handOnly = UnityEditor.SessionState.GetBool(HandKey, false);
+            if (_steps == null) _handRun = handOnly;
+            handOnly = _handRun;
+            if (_steps == null) _steps = handOnly ? HandControllerSmoke() : seamOnly ? SeamSmoke() : sceneryOnly ? ScenerySmoke() : controlOnly ? ControlSmoke() : Smoke();
+            if (!_steps.MoveNext()) Complete(true, handOnly ? "Mando Wi-Fi: conexion, palanca, altura, IMU, acercar, ensenar, deshacer, borrar, OK/ejecutar, retirar y timeout verificados." : seamOnly ? "M1 ensenado con teclas y ejecutado por el robot." : sceneryOnly ? "Capturas del entorno generadas." : controlOnly ? "Control de punta N1: aproximacion, avance, arco, orientacion, superficies y exclusion de examen verificados." :
                 "Referencias, curso N1-N5, superficies, CSV, timeouts, cierre, deposicion y control de punta N1 verificados.");
         }
         catch (Exception ex) { Complete(false, ex.ToString()); }
@@ -181,14 +200,14 @@ public static class FrankaVRProjectChecks
         One<GazeInteractor>();
         GazeButton selector = null;
         foreach (GazeButton button in UnityEngine.Object.FindObjectsByType<GazeButton>())
-            if (button.label == "N2 · TOPE") selector = button;
+            if (button.label == WorkOrder.Catalog[1].Id + " · " + WorkOrder.Catalog[1].Title.ToUpperInvariant()) selector = button;
         Require(selector != null && selector.GetComponent<Collider>().isTrigger, "Seleccion por puntero no preparada");
         Physics.SyncTransforms();
         Require(Physics.Raycast(Camera.main.transform.position, (selector.transform.position - Camera.main.transform.position).normalized,
             out RaycastHit uiHit, 5f, 1 << 5, QueryTriggerInteraction.Collide) && uiHit.collider.GetComponent<GazeButton>() == selector,
             "El puntero no alcanza el boton de ejercicio");
         selector.Activate();
-        Require(course.SelectedExercise == 1 && course.Phase == CoursePhaseV5.Briefing, "Boton no selecciona N2");
+        Require(course.SelectedExercise == 1 && course.Phase == CoursePhaseV5.Briefing, "Boton no selecciona el segundo trabajo");
         course.BackToMenu(); course.SelectExercise(0); course.BackToMenu();
         var navigator = One<DesktopNavigatorV6>();
         float originalFov = Camera.main.fieldOfView;
@@ -220,11 +239,11 @@ public static class FrankaVRProjectChecks
         Require(!hybrid.GloveMotionActive && !hybrid.Glove.ClutchHeld && !hybrid.Glove.SparkHeld, "Timeout no libera el mando");
         Debug.Log("[FrankaVR Checks] CSV, comandos y retorno al teclado OK");
 
-        for (int exercise = 0; exercise < 5; exercise++)
+        for (int exercise = 0; exercise < WorkOrder.Catalog.Length; exercise++)
         {
             course.SelectExercise(exercise);
             for (int i = 0; i < 3; i++) yield return null;
-            Require(task.WorkOrderId == "N" + (exercise + 1) && task.Seam.Count >= 60, "Orden o costura incorrecta");
+            Require(task.WorkOrderId == WorkOrder.Catalog[exercise].Id && task.Seam.Count >= 60, "Orden o costura incorrecta");
             Require(!factory.LegacyChapa.gameObject.activeSelf, "Chapa antigua solapada");
             Physics.SyncTransforms();
             int surfaceHits = 0;
@@ -239,7 +258,7 @@ public static class FrankaVRProjectChecks
                 }
             }
             Require(surfaceHits == task.Seam.Count, "Costura sin superficie soldable: " + task.WorkOrderId + " " + surfaceHits + "/" + task.Seam.Count);
-            if (task.Order.Joint == JointType.FilletT)
+            if (task.Order.Joint == JointType.FilletT || task.Order.Joint == JointType.BracketFillet)
             {
                 int sample = task.Seam.Count / 2;
                 Vector3 normal = task.Seam.NormalAt(sample);
@@ -248,30 +267,15 @@ public static class FrankaVRProjectChecks
                 Vector3 handDirection = normal * Mathf.Cos(angle) + side * Mathf.Sin(angle);
                 Vector3 point = task.Seam.PointAt(sample);
                 Require(Physics.Raycast(point + handDirection * 0.06f, -handDirection, out RaycastHit hit, 0.08f, 1 << 6)
-                    && Vector3.Distance(hit.point, point) < 0.005f, "La chapa vertical bloquea el angulo recomendado de N3");
+                    && Vector3.Distance(hit.point, point) < 0.005f, "La pieza bloquea el angulo recomendado de " + task.WorkOrderId);
             }
             CheckPanels();
             Debug.Log("[FrankaVR Checks] " + task.WorkOrderId + " superficie OK: " + surfaceHits + " puntos");
         }
-        Capture("02_instrucciones_N5");
-
-        course.StartTraining();
-        var before = task.Seam.Get(0);
-        task.Seam.Deposit(before.Pos, before.Normal, 2000f, 1f, 0.1f);
-        float deposited = task.Seam.Get(0).Energy;
-        Require(course.IndexPipe(180f), "N5 no permite giro durante practica");
-        Require(Mathf.Approximately(task.Seam.Get(0).Energy, deposited), "El giro borra la energia depositada");
-        Require(Vector3.Distance(task.Seam.PointAt(0), before.Pos) > 0.10f, "El giro no transforma la costura");
-        torch.SetSparkRequested(true);
-        Require(!course.IndexPipe(15f), "La pieza gira con chispa solicitada");
-        torch.SetSparkRequested(false);
-        course.FinishExercise();
-        course.StartExam();
-        Require(!course.IndexPipe(15f), "El caño gira en examen fijo");
-        course.FinishExercise();
+        Capture("02_instrucciones");
 
         course.SelectExercise(0);
-        Require(task.Seam.Count == factory.LineSamples, "N1 hereda la densidad de muestras de N5");
+        Require(task.Seam.Count == factory.LineSamples, "Densidad de muestras de la costura incorrecta");
         course.StartExam();
         for (int i = 0; i < 3; i++) yield return null;
         Require(!GameObject.Find("SeamPathGuide").GetComponent<LineRenderer>().enabled, "El examen muestra la guia");
@@ -329,7 +333,7 @@ public static class FrankaVRProjectChecks
         Capture("04_resultados");
         Require(File.Exists(course.LastResultPath) && File.Exists(Path.ChangeExtension(course.LastResultPath, ".csv")), "No se exportaron JSON/CSV");
         var saved = JsonUtility.FromJson<WeldingSessionReport.Result>(File.ReadAllText(course.LastResultPath));
-        Require(saved.exercise == "N1" && Mathf.Approximately(saved.score, task.FinalScore), "Resultado exportado no coincide con la sesion");
+        Require(saved.exercise == WorkOrder.Catalog[0].Id && Mathf.Approximately(saved.score, task.FinalScore), "Resultado exportado no coincide con la sesion");
     }
 
     static IEnumerator ControlSmoke()
@@ -412,6 +416,141 @@ public static class FrankaVRProjectChecks
         return sb.Length > 0 ? sb.ToString() : "(sin penetraciones)";
     }
 
+    static string Ctl(float jx, float jy, string flags, bool imu, Quaternion q)
+    {
+        // Identico al snprintf de FrankaVR_Mando.ino.
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return string.Format(inv, "CTL,{0:0.00},{1:0.00},{2},{3},{4:0.0000},{5:0.0000},{6:0.0000},{7:0.0000}\n",
+            jx, jy, flags, imu ? 1 : 0, q.w, q.x, q.y, q.z);
+    }
+
+    // flags: gatillo,acercar,retirar,ok,deshacer,borrar,altura,calibrar,vista
+    static IEnumerator HandControllerSmoke()
+    {
+        UnityEditor.SessionState.SetBool(HandKey, false);
+        float until = Time.unscaledTime + 5f;
+        while (Time.unscaledTime < until) yield return null;
+        var course = One<CourseTrainingManagerV5>();
+        course.ResultsDirectoryOverride = "Verificacion/Resultados_prueba";
+        var task = One<WeldingTaskManager>();
+        var teleop = One<WeldingTeleopController>();
+        var torch = One<WeldingTorch>();
+        var hybrid = One<HybridTeleopInput>();
+        var udp = One<UdpControllerReceiver>();
+        var hand = One<HandControllerInput>();
+        Require(udp.Listening, "El receptor UDP no abrio el puerto " + udp.ListenPort + ": " + udp.LastError);
+        teleop.enabled = true;
+        course.BackToMenu(); course.SelectExercise(0); course.StartTraining();
+        for (int i = 0; i < 5; i++) yield return null;
+        WeldPathRecorder recorder = course.Recorder;
+        const string none = "0,0,0,0,0,0,0,0,0";
+        var sender = new System.Net.Sockets.UdpClient();
+        var to = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, udp.ListenPort);
+        string packet = Ctl(0f, 0f, none, false, Quaternion.identity);
+        Func<float, IEnumerator> stream = seconds => StreamFor(sender, to, () => packet, seconds);
+        try
+        {
+            packet = Ctl(0f, 0f, none, false, Quaternion.identity);
+            for (IEnumerator e = stream(0.6f); e.MoveNext();) yield return null;
+            Require(hand.Connected && hybrid.ActiveMotionSource == "Mando", "La app no toma el mando: paquetes=" + hand.Packets + " fuente=" + hybrid.ActiveMotionSource);
+
+            Vector3 p0 = torch.ArcOriginPosition;
+            packet = Ctl(0f, 1f, "0,0,0,0,0,0,1,0,0", false, Quaternion.identity); // palanca apretada: altura
+            for (IEnumerator e = stream(1.0f); e.MoveNext();) yield return null;
+            Require(torch.ArcOriginPosition.y - p0.y > 0.02f, "La palanca con altura no sube la torcha: " + ((torch.ArcOriginPosition.y - p0.y) * 1000f).ToString("0") + " mm");
+            p0 = torch.ArcOriginPosition;
+            packet = Ctl(1f, 0f, none, false, Quaternion.identity);
+            for (IEnumerator e = stream(1.0f); e.MoveNext();) yield return null;
+            Require(Vector3.Distance(torch.ArcOriginPosition, p0) > 0.02f, "La palanca no mueve la torcha");
+
+            Vector3 axis0 = torch.PointingDir;
+            packet = Ctl(0f, 0f, none, true, Quaternion.identity);
+            for (IEnumerator e = stream(0.5f); e.MoveNext();) yield return null;
+            packet = Ctl(0f, 0f, none, true, Quaternion.Euler(25f, 0f, 0f));
+            for (IEnumerator e = stream(2.0f); e.MoveNext();) yield return null;
+            float turned = Vector3.Angle(axis0, torch.PointingDir);
+            Require(turned > 15f, "La IMU no orienta la torcha: " + turned.ToString("0") + " grados");
+            Capture("18_mando_imu");
+
+            packet = Ctl(0f, 0f, "0,1,0,0,0,0,0,0,0", false, Quaternion.identity); // ACERCAR corto
+            for (IEnumerator e = stream(0.15f); e.MoveNext();) yield return null;
+            Require(teleop.Approaching, "ACERCAR del mando no inicia la aproximacion");
+            packet = Ctl(0f, 0f, none, false, Quaternion.identity);
+            until = Time.unscaledTime + 30f;
+            while (teleop.Approaching && Time.unscaledTime < until) { Send(sender, to, packet); yield return null; }
+            Require(Vector3.Distance(torch.ArcOriginPosition, task.Seam.PointAt(0)) < 0.015f, "La aproximacion con el mando no llego: " + teleop.AssistMessage);
+
+            // ENSENAR: gatillo + palanca hacia el sentido de la costura en la vista.
+            Vector3 t = task.Seam.TangentAt(0);
+            Camera cam = Camera.main;
+            Vector3 f = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up).normalized;
+            Vector3 r = Vector3.ProjectOnPlane(cam.transform.right, Vector3.up).normalized;
+            bool onForward = Mathf.Abs(Vector3.Dot(f, t)) >= Mathf.Abs(Vector3.Dot(r, t));
+            float jx = onForward ? 0f : Mathf.Sign(Vector3.Dot(r, t)), jy = onForward ? Mathf.Sign(Vector3.Dot(f, t)) : 0f;
+            packet = Ctl(jx, jy, "1,0,0,0,0,0,0,0,0", false, Quaternion.identity);
+            for (IEnumerator e = stream(3.0f); e.MoveNext();) yield return null;
+            Require(recorder.Count > 10, "El gatillo del mando no graba: " + recorder.Count + " puntos " + recorder.Hint);
+            Capture("19_mando_ensenando");
+            int taught = recorder.Count;
+            packet = Ctl(0f, 0f, "0,0,0,0,1,0,0,0,0", false, Quaternion.identity); // DESHACER corto
+            for (IEnumerator e = stream(0.15f); e.MoveNext();) yield return null;
+            packet = Ctl(0f, 0f, none, false, Quaternion.identity);
+            for (IEnumerator e = stream(0.2f); e.MoveNext();) yield return null;
+            Require(recorder.Count < taught, "DESHACER del mando no borra el ultimo tramo");
+            packet = Ctl(jx, jy, "1,0,0,0,0,0,0,0,0", false, Quaternion.identity);
+            for (IEnumerator e = stream(2.0f); e.MoveNext();) yield return null;
+            Require(recorder.Count > 10, "No vuelve a grabar despues de deshacer");
+            packet = Ctl(0f, 0f, "0,0,0,0,0,1,0,0,0", false, Quaternion.identity); // BORRAR (largo)
+            for (IEnumerator e = stream(0.15f); e.MoveNext();) yield return null;
+            packet = Ctl(0f, 0f, none, false, Quaternion.identity);
+            for (IEnumerator e = stream(0.2f); e.MoveNext();) yield return null;
+            Require(recorder.Count == 0, "BORRAR del mando no limpia la trayectoria");
+            packet = Ctl(jx, jy, "1,0,0,0,0,0,0,0,0", false, Quaternion.identity);
+            for (IEnumerator e = stream(2.5f); e.MoveNext();) yield return null;
+            packet = Ctl(0f, 0f, none, false, Quaternion.identity);
+            for (IEnumerator e = stream(0.3f); e.MoveNext();) yield return null;
+
+            var gaze = UnityEngine.Object.FindAnyObjectByType<GazeInteractor>();
+            bool gazing = gaze != null && gaze.Current != null;
+            packet = Ctl(0f, 0f, "0,0,0,1,0,0,0,0,0", false, Quaternion.identity); // OK
+            for (IEnumerator e = stream(0.15f); e.MoveNext();) yield return null;
+            packet = Ctl(0f, 0f, none, false, Quaternion.identity);
+            for (IEnumerator e = stream(0.5f); e.MoveNext();) yield return null;
+            Require(gazing || course.Stage == CourseStageV5.Execute, "OK sin boton mirado no ejecuta el programa: " + course.ProgramMessage);
+            if (!gazing)
+            {
+                Require(teleop.Playing || teleop.PlaybackDone, "El programa no arranca");
+                packet = Ctl(0f, 0f, "0,0,1,0,0,0,0,0,0", false, Quaternion.identity); // RETIRAR
+                for (IEnumerator e = stream(0.15f); e.MoveNext();) yield return null;
+                Require(!teleop.Playing, "RETIRAR del mando no aborta la ejecucion");
+            }
+        }
+        finally { sender.Close(); }
+
+        // Sin paquetes: el mando se suelta solo y vuelve el teclado.
+        until = Time.unscaledTime + 0.7f;
+        while (Time.unscaledTime < until) yield return null;
+        Require(!hand.Connected && !hand.Trigger && hybrid.ActiveMotionSource != "Mando", "El timeout no libera el mando");
+        Debug.Log("[Mando] paquetes=" + hand.Packets + " recibidos UDP=" + udp.Received);
+    }
+
+    static void Send(System.Net.Sockets.UdpClient sender, System.Net.IPEndPoint to, string packet)
+    {
+        byte[] bytes = System.Text.Encoding.ASCII.GetBytes(packet);
+        sender.Send(bytes, bytes.Length, to);
+    }
+
+    // Manda a ~50 Hz como el firmware.
+    static IEnumerator StreamFor(System.Net.Sockets.UdpClient sender, System.Net.IPEndPoint to, Func<string> packet, float seconds)
+    {
+        float until = Time.unscaledTime + seconds, next = 0f;
+        while (Time.unscaledTime < until)
+        {
+            if (Time.unscaledTime >= next) { next = Time.unscaledTime + 0.02f; Send(sender, to, packet()); }
+            yield return null;
+        }
+    }
+
     static IEnumerator SeamSmoke()
     {
         float until = Time.unscaledTime + 5f;
@@ -457,108 +596,97 @@ public static class FrankaVRProjectChecks
         camera.transform.SetPositionAndRotation(cameraPosition, cameraRotation);
     }
 
-    // Cordon N1 completo solo con las teclas: Espacio + la tecla de avance sobre la costura.
+    // Flujo completo del primer trabajo: ENSENAR la trayectoria con gatillo + la tecla de avance
+    // (sin arco) y EJECUTARLA con el robot, que suelda solo a la velocidad programada.
     static IEnumerator AuditFullSeam(CourseTrainingManagerV5 course, WeldingTaskManager task,
         WeldingTeleopController teleop, WeldingTorch torch)
     {
         course.BackToMenu(); course.SelectExercise(0); course.StartTraining();
         for (int i = 0; i < 3; i++) yield return null;
         Physics.SyncTransforms();
-        torch.LoadNewElectrode();
+        WeldPathRecorder recorder = course.Recorder;
+        Require(recorder != null && course.Stage == CourseStageV5.Teach && !teleop.ArcEnabled, "El trabajo no arranca en ENSENAR");
         bool relative = teleop.ReferenceRelative;
         teleop.ReferenceRelative = false;
         Vector3 start = task.Seam.PointAt(0), t0 = task.Seam.TangentAt(0);
-        teleop.ResetTo(start - t0 * 0.004f + Vector3.up * 0.06f);
+        Vector3 end = task.Seam.PointAt(task.Seam.Count - 1);
+        teleop.ResetTo(start + task.Seam.NormalAt(0) * 0.06f);
         var command = TeleopCommand.Neutral;
         float until = Time.unscaledTime + 4f;
         while (Time.unscaledTime < until) { teleop.ApplyMotion(command, true, Time.deltaTime); yield return null; }
         Require(teleop.BeginAssistedApproach(), "No inicia la aproximacion al comienzo de la costura");
         until = Time.unscaledTime + 30f;
-        var approachLog = new System.Text.StringBuilder("aproximacion t,etapa,dist_inicio_mm,altura_mm,ik_err_mm,ik_err_deg,j1..j7\n");
-        var armLog = teleop.Ik.GetComponent<PandaArm>();
-        float approachT0 = Time.unscaledTime, approachLogAt = 0f;
-        while (teleop.Approaching && Time.unscaledTime < until)
-        {
-            teleop.ApplyMotion(command, true, Time.deltaTime);
-            if (Time.unscaledTime >= approachLogAt)
-            {
-                approachLogAt = Time.unscaledTime + 0.5f;
-                approachLog.Append((Time.unscaledTime - approachT0).ToString("0.0")).Append(',').Append(teleop.ApproachStage).Append(',')
-                    .Append((Vector3.Distance(torch.ArcOriginPosition, start) * 1000f).ToString("0")).Append(',')
-                    .Append(((torch.ArcOriginPosition.y - start.y) * 1000f).ToString("0")).Append(',')
-                    .Append((teleop.Ik.ErrorMeters * 1000f).ToString("0.0")).Append(',').Append(teleop.Ik.ErrorDegrees.ToString("0.0"));
-                for (int j = 0; j < PandaArm.N; j++) approachLog.Append(',').Append(armLog.CurrentDeg(j).ToString("0"));
-                approachLog.Append('\n');
-            }
-            yield return null;
-        }
-        File.WriteAllText("Verificacion/Aproximacion_diagnostico.csv", approachLog.ToString());
+        while (teleop.Approaching && Time.unscaledTime < until) { teleop.ApplyMotion(command, true, Time.deltaTime); yield return null; }
         Require(Vector3.Distance(torch.ArcOriginPosition, start) < 0.015f,
             "La aproximacion no llego al inicio de la costura: " + (Vector3.Distance(torch.ArcOriginPosition, start) * 1000f).ToString("0") + " mm " + teleop.AssistMessage);
+
+        // ENSENAR: gatillo + solo la tecla cuyo eje de vista coincide con la tangente.
         command.Orientation = Quaternion.FromToRotation(Vector3.down, teleop.Ik.approachDirection);
         command.SparkHeld = true;
         command.MoveClutch = true;
-        // Solo la tecla cuyo eje de vista coincide con la tangente, como haria el alumno.
         command.TranslationRate = Mathf.Abs(t0.x) >= Mathf.Abs(t0.z) ? new Vector3(Mathf.Sign(t0.x), 0f, 0f) : new Vector3(0f, 0f, Mathf.Sign(t0.z));
-        Vector3 end = task.Seam.PointAt(task.Seam.Count - 1);
-        until = Time.unscaledTime + 75f;
-        int frames = 0, locked = 0, arcing = 0;
-        float captureAt = Time.unscaledTime + 25f, logAt = 0f, t0Time = Time.unscaledTime;
-        var diag = new System.Text.StringBuilder("t,along_mm,lateral_mm,height_mm,arc_mm,estado,costura,bloqueado,objetivo_mm,ik_err_mm,ik_err_deg,varilla_mm,j1,j2,j3,j4,j5,j6,j7\n");
+        until = Time.unscaledTime + 60f;
+        float captureAt = Time.unscaledTime + 8f, logAt = 0f, t0Time = Time.unscaledTime;
+        var diag = new System.Text.StringBuilder("t,along_mm,lateral_mm,height_mm,arc_mm,estado,costura,grabando,colision,ik_err_mm,ik_err_deg,j1,j2,j3,j4,j5,j6,j7,detalle\n");
         var arm = teleop.Ik.GetComponent<PandaArm>();
         var inv = System.Globalization.CultureInfo.InvariantCulture;
-        string contacts = null;
-        while (Time.unscaledTime < until && Vector3.Distance(torch.ArcOriginPosition, end) > 0.006f)
+        var guard = UnityEngine.Object.FindAnyObjectByType<RobotCollisionGuard>();
+        bool arcDuringTeach = false;
+        while (Time.unscaledTime < until && Vector3.Distance(torch.ArcOriginPosition, end) > 0.0042f)
         {
             teleop.ApplyMotion(command, true, Time.deltaTime);
-            torch.SetSparkRequested(!teleop.MotionBlocked);
-            if (contacts == null && teleop.Ik.ErrorMeters > 0.008f)
-            {
-                contacts = RobotContacts(teleop.Ik.transform) + Geometry(teleop, torch);
-                if (DiagnoseFirstContact) break;
-            }
+            arcDuringTeach |= torch.Arcing;
             if (Time.unscaledTime >= logAt)
             {
                 logAt = Time.unscaledTime + 0.5f;
                 Vector3 tip = torch.ArcOriginPosition, rel = tip - start;
                 Vector3 nrm = task.Seam.NormalAt(0), side = Vector3.Cross(nrm, t0).normalized;
-                diag.AppendFormat(inv, "{0:0.0},{1:0.0},{2:0.0},{3:0.0},{4:0.0},{5},{6},{7},{8:0.0},{9:0.0},{10:0.0},{11:0}",
+                diag.AppendFormat(inv, "{0:0.0},{1:0.0},{2:0.0},{3:0.0},{4:0.0},{5},{6},{7},{8},{9:0.0},{10:0.0}",
                     Time.unscaledTime - t0Time, Vector3.Dot(rel, t0) * 1000f, Vector3.Dot(rel, side) * 1000f, Vector3.Dot(rel, nrm) * 1000f,
-                    torch.ArcLenMm, torch.State, teleop.SeamLocked, teleop.MotionBlocked,
-                    Vector3.Distance(tip, teleop.PhysicalTarget) * 1000f, teleop.Ik.ErrorMeters * 1000f, teleop.Ik.ErrorDegrees, torch.RemainingMm);
+                    torch.ArcLenMm, torch.State, teleop.SeamLocked, recorder.RecordingNow, guard != null && guard.Colliding,
+                    teleop.Ik.ErrorMeters * 1000f, teleop.Ik.ErrorDegrees);
                 for (int j = 0; j < PandaArm.N; j++) diag.Append(',').Append(arm.CurrentDeg(j).ToString("0", inv));
-                diag.Append('\n');
+                diag.Append(',').Append(guard != null ? guard.CollisionDetail : "").Append('\n');
             }
-            frames++;
-            if (teleop.SeamLocked) locked++;
-            if (torch.Arcing) arcing++;
-            if (Time.unscaledTime > captureAt) { Capture("15_soldando"); captureAt = float.PositiveInfinity; }
+            if (Time.unscaledTime > captureAt) { Capture("15_ensenando"); captureAt = float.PositiveInfinity; }
             yield return null;
         }
-        torch.SetSparkRequested(false);
-        command = TeleopCommand.Neutral;
-        command.Orientation = Quaternion.FromToRotation(Vector3.down, teleop.Ik.approachDirection);
-        command.MoveClutch = true;
-        command.TranslationRate = new Vector3(0f, 1f, 0f);
-        until = Time.unscaledTime + 1.5f;
-        while (Time.unscaledTime < until) { teleop.ApplyMotion(command, true, Time.deltaTime); yield return null; }
+        command.SparkHeld = false; command.TranslationRate = Vector3.zero;
+        teleop.ApplyMotion(command, true, Time.deltaTime);
+        for (int i = 0; i < 5; i++) yield return null;
+        File.WriteAllText("Verificacion/Cordon_diagnostico.csv", diag.ToString());
+        float energy = 0f;
+        for (int i = 0; i < task.Seam.Count; i++) energy += task.Seam.Get(i).Energy;
+        Require(!arcDuringTeach && energy == 0f, "Hubo arco mientras se ensenaba");
+        Require(recorder.Count > 30 && recorder.CoveragePercent > 80f,
+            "Trayectoria ensenada incompleta: " + recorder.Count + " puntos, cobertura " + recorder.CoveragePercent.ToString("0") + "%");
         teleop.ReferenceRelative = relative;
-        for (int i = 0; i < 10; i++) yield return null;
+
+        // EJECUTAR: el Update real del controlador, sin teclas: el arco lo maneja el programa.
+        teleop.enabled = true;
+        Require(course.ExecuteProgram(), "No se pudo ejecutar el programa: " + course.ProgramMessage);
+        until = Time.unscaledTime + 90f;
+        captureAt = Time.unscaledTime + 12f;
+        int frames = 0, arcing = 0;
+        while (course.Phase == CoursePhaseV5.Running && Time.unscaledTime < until)
+        {
+            frames++;
+            if (torch.Arcing) arcing++;
+            if (Time.unscaledTime > captureAt) { Capture("16_ejecutando"); captureAt = float.PositiveInfinity; }
+            yield return null;
+        }
+        teleop.enabled = false;
+        Require(course.Phase == CoursePhaseV5.Results, "La ejecucion no termino: progreso " + (teleop.PlaybackProgress * 100f).ToString("0") + "% " + teleop.AssistMessage);
         task.Seam.Tally(out int good, out int cold, out int burn, out int undercut, out int porosity, out int untouched);
         float goodPct = 100f * good / Mathf.Max(1, task.Seam.Count);
-        File.WriteAllText("Verificacion/Cordon_diagnostico.csv", diag.ToString());
-        File.WriteAllText("Verificacion/Cordon_resumen.txt", "buenos=" + good + "/" + task.Seam.Count + " frios=" + cold +
+        File.WriteAllText("Verificacion/Cordon_resumen.txt", task.WorkOrderId + " buenos=" + good + "/" + task.Seam.Count + " frios=" + cold +
             " perforacion=" + burn + " socavado=" + undercut + " porosidad=" + porosity + " sin_soldar=" + untouched +
-            " arco=" + (100f * arcing / Mathf.Max(1, frames)).ToString("0") + "% costura=" + (100f * locked / Mathf.Max(1, frames)).ToString("0") +
-            "% llegada_mm=" + (Vector3.Distance(torch.ArcOriginPosition, end) * 1000f).ToString("0") +
-            "\ncontactos al trabarse:\n" + (contacts ?? "(no se trabo)"));
-        Debug.Log("[CordonCompleto] buenos=" + good + "/" + task.Seam.Count + " (" + goodPct.ToString("0") + "%) frios=" + cold +
-            " perforacion=" + burn + " socavado=" + undercut + " porosidad=" + porosity + " sin soldar=" + untouched +
-            " arco=" + (100f * arcing / Mathf.Max(1, frames)).ToString("0") + "% bloqueo costura=" + (100f * locked / Mathf.Max(1, frames)).ToString("0") +
-            "% llegada=" + (Vector3.Distance(torch.ArcOriginPosition, end) * 1000f).ToString("0") + "mm");
-        Capture("16_cordon_completo");
-        Require(goodPct >= 70f, "Cordon N1 completo con teclas: solo " + goodPct.ToString("0") + "% correcto");
-        course.FinishExercise();
+            " arco_ejecucion=" + (100f * arcing / Mathf.Max(1, frames)).ToString("0") + "% puntos_ensenados=" + recorder.Count +
+            " cobertura=" + recorder.CoveragePercent.ToString("0") + "% calidad_ensenada=" + recorder.QualityPercent.ToString("0") +
+            "% colisiones=" + recorder.CollisionSamples + " nota=" + task.FinalScore.ToString("0"));
+        Capture("17_cordon_ejecutado");
+        Require(File.Exists(course.LastDatasetPath) && File.Exists(Path.ChangeExtension(course.LastDatasetPath, ".csv")), "No se exporto la trayectoria");
+        Require(goodPct >= 80f, "Cordon ejecutado: solo " + goodPct.ToString("0") + "% correcto");
         teleop.SetPrecisionSolver(false);
     }
 
@@ -624,7 +752,7 @@ public static class FrankaVRProjectChecks
         while (Time.unscaledTime < until)
         { teleop.ApplyMotion(command, true, Time.deltaTime); yield return null; }
         float rotationError = Vector3.Distance(held, torch.ArcOriginPosition);
-        Debug.Log("[ControlPunta] Error al orientar=" + rotationError * 1000f + "mm");
+        Debug.Log("[ControlPunta] Error al orientar=" + rotationError * 1000f + "mm ik=" + teleop.Ik.ErrorMeters * 1000f + "mm/" + teleop.Ik.ErrorDegrees + "deg objetivo-punta=" + Vector3.Distance(held, teleop.PhysicalTarget) * 1000f + "mm bloqueado=" + teleop.MotionBlocked + " " + teleop.AssistMessage);
         Require(rotationError < 0.006f, "La orientacion desplaza la punta sostenida");
         // Regresion: retirada con Espacio mantenido, antes bloqueada por la ayuda.
         start = torch.ArcOriginPosition;
@@ -699,7 +827,7 @@ public static class FrankaVRProjectChecks
         var csv = new System.Text.StringBuilder("ejercicio,precision,punto,error_punta_mm,error_direccion_grados,arco_mm,objetivo_limitado\n");
         var weldCsv = new System.Text.StringBuilder("ejercicio,energia_j,arco_estable,arco_mm\n");
         var culture = System.Globalization.CultureInfo.InvariantCulture;
-        for (int exercise = 0; exercise < 5; exercise++)
+        for (int exercise = 0; exercise < WorkOrder.Catalog.Length; exercise++)
         {
             course.BackToMenu();
             // Retirar antes de cambiar geometria, como hace el operador al volver

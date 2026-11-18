@@ -1,3 +1,1 @@
-buenos=58/60 frios=2 perforacion=0 socavado=0 porosidad=0 sin_soldar=0 arco=100% costura=100% llegada_mm=204
-contactos al trabarse:
-(no se trabo)
+M1 buenos=54/60 frios=6 perforacion=0 socavado=0 porosidad=0 sin_soldar=0 arco_ejecucion=81% puntos_ensenados=59 cobertura=97% calidad_ensenada=97% colisiones=0 nota=85

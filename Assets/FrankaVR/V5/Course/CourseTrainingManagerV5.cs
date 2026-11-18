@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using FrankaVR.Welding;
 
@@ -5,9 +7,11 @@ namespace FrankaVR.V5
 {
     public enum CoursePhaseV5 { Selection, Briefing, Running, Results }
     public enum CourseModeV5 { Training, Exam }
+    public enum CourseStageV5 { Teach, Execute }
 
     /// <summary>
-    /// Flujo simple de curso: seleccionar ejercicio -> briefing -> practica/examen -> resultado.
+    /// Flujo de curso: seleccionar trabajo -> instrucciones -> ensenar la trayectoria ->
+    /// ejecutarla con el robot -> resultado. La demostracion se exporta como datos.
     /// No reemplaza WeldingTaskManager; lo orquesta.
     /// </summary>
     public class CourseTrainingManagerV5 : MonoBehaviour
@@ -15,6 +19,11 @@ namespace FrankaVR.V5
         public WeldingTaskManager Task;
         public TrainingWorkpieceFactoryV5 Workpieces;
         public WeldingEnvironmentPolish Guidance;
+        public WeldingTeleopController Teleop;
+        public WeldPathRecorder Recorder;
+        [Header("Programa")]
+        public float ProgramSpeedMmS = 6f;
+        public float MinProgramSpeedMmS = 2f, MaxProgramSpeedMmS = 12f;
 
         [Header("Inicio")]
         public bool PrepareOnStart = true;
@@ -26,6 +35,10 @@ namespace FrankaVR.V5
 
         [Header("Estado (solo lectura)")]
         public CoursePhaseV5 Phase = CoursePhaseV5.Selection;
+        public CourseStageV5 Stage = CourseStageV5.Teach;
+        public string ProgramMessage = "";
+        public string LastDatasetPath;
+        readonly List<Vector3> _programPositions = new List<Vector3>(), _programDirections = new List<Vector3>();
         public string CurrentOrderId = "N1";
         public string LastResultPath;
         public string ResultSaveError;
@@ -50,6 +63,9 @@ namespace FrankaVR.V5
             if (Task == null) Task = FindObjectOfType<WeldingTaskManager>();
             if (Workpieces == null) Workpieces = FindObjectOfType<TrainingWorkpieceFactoryV5>();
             if (Guidance == null) Guidance = FindObjectOfType<WeldingEnvironmentPolish>();
+            if (Teleop == null) Teleop = FindObjectOfType<WeldingTeleopController>();
+            if (Recorder == null) Recorder = FindObjectOfType<WeldPathRecorder>();
+            if (Recorder == null) Recorder = gameObject.AddComponent<WeldPathRecorder>();
         }
 
         void Start()
@@ -67,6 +83,10 @@ namespace FrankaVR.V5
                 Phase = CoursePhaseV5.Results;
                 SaveResult();
             }
+            if (Phase == CoursePhaseV5.Running && Stage == CourseStageV5.Execute && Teleop != null && Teleop.PlaybackDone)
+                FinishExercise();
+            if (Recorder != null) Recorder.SetTrailVisible(Phase != CoursePhaseV5.Selection);
+            ControllerActions();
 
             if (!KeyboardShortcuts) return;
 
@@ -81,8 +101,31 @@ namespace FrankaVR.V5
             if (Input.GetKeyDown(KeyCode.F) && Phase == CoursePhaseV5.Running) FinishExercise();
             if (Input.GetKeyDown(KeyCode.M)) BackToMenu();
             if (Input.GetKeyDown(KeyCode.G) && Phase == CoursePhaseV5.Results) SaveResult();
-            if (Input.GetKeyDown(KeyCode.Z)) IndexPipe(-15f);
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) ExecuteProgram();
+            if (Input.GetKeyDown(KeyCode.Z)) { if (UsesPipeIndexer) IndexPipe(-15f); else UndoStroke(); }
             if (Input.GetKeyDown(KeyCode.X)) IndexPipe(15f);
+            if (Input.GetKeyDown(KeyCode.R)) ClearProgram();
+            if (Input.GetKeyDown(KeyCode.Minus) || Input.GetKeyDown(KeyCode.KeypadMinus)) StepProgramSpeed(-0.5f);
+            if (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.KeypadPlus)) StepProgramSpeed(0.5f);
+        }
+
+        FrankaVR.Teleop.HandControllerInput _hand;
+        float _nextHandSearch;
+
+        // Mando ESP32: OK = clic en el boton que se mira; sin boton, en ENSENAR ejecuta.
+        void ControllerActions()
+        {
+            if (_hand == null && Time.unscaledTime >= _nextHandSearch)
+            { _nextHandSearch = Time.unscaledTime + 1f; _hand = FindAnyObjectByType<FrankaVR.Teleop.HandControllerInput>(); }
+            if (_hand == null) return;
+            if (_hand.ConsumeOk())
+            {
+                GazeInteractor gaze = FindAnyObjectByType<GazeInteractor>();
+                if (gaze != null && gaze.Current != null && gaze.Current.isActiveAndEnabled) gaze.Current.Activate();
+                else if (Phase == CoursePhaseV5.Running && Stage == CourseStageV5.Teach) ExecuteProgram();
+            }
+            if (_hand.ConsumeUndo()) { if (UsesPipeIndexer) IndexPipe(-15f); else UndoStroke(); }
+            if (_hand.ConsumeClear()) ClearProgram();
         }
 
         public bool IndexPipe(float degrees)
@@ -99,7 +142,13 @@ namespace FrankaVR.V5
             try
             {
                 LastResultPath = WeldingSessionReport.Save(Task, Mode.ToString(),
-                    UsesPipeIndexer, ResultsDirectoryOverride);
+                    UsesPipeIndexer, ResultsDirectoryOverride, Recorder, ProgramSpeedMmS);
+                if (Recorder != null)
+                {
+                    string basePath = Path.Combine(Path.GetDirectoryName(LastResultPath), Path.GetFileNameWithoutExtension(LastResultPath) + "_trayectoria");
+                    Recorder.Export(basePath, CurrentOrderId, Mode.ToString(), ProgramSpeedMmS);
+                    LastDatasetPath = basePath + ".json";
+                }
                 ResultSaveError = "";
                 _resultSaved = true;
                 return true;
@@ -167,11 +216,54 @@ namespace FrankaVR.V5
             PrepareSelected();
             if (Task != null) Task.StartTask();
             Phase = CoursePhaseV5.Running;
+            Stage = CourseStageV5.Teach;
+            ProgramMessage = "";
+            if (SelectedOrder != null) ProgramSpeedMmS = SelectedOrder.RecommendedSpeedMmS;
+            if (Teleop != null) { Teleop.StopPlayback(); Teleop.ArcEnabled = false; }
+            if (Recorder != null)
+            {
+                Recorder.Clear();
+                Recorder.Teaching = true;
+                Recorder.ShowQualityColors = Mode == CourseModeV5.Training;
+            }
+        }
+
+        /// El robot ejecuta solo la trayectoria ensenada, con arco y a la velocidad programada.
+        public bool ExecuteProgram()
+        {
+            if (Phase != CoursePhaseV5.Running || Stage != CourseStageV5.Teach || Teleop == null || Recorder == null) return false;
+            if (Recorder.Count < 10) { ProgramMessage = "GRABÁ LA TRAYECTORIA ANTES DE EJECUTAR"; return false; }
+            Recorder.GetProgram(_programPositions, _programDirections);
+            if (!Teleop.BeginPlayback(_programPositions, _programDirections, ProgramSpeedMmS * 0.001f))
+            { ProgramMessage = "TRAYECTORIA DEMASIADO CORTA"; return false; }
+            Recorder.Teaching = false;
+            Teleop.ArcEnabled = false;
+            Stage = CourseStageV5.Execute;
+            ProgramMessage = "";
+            return true;
+        }
+
+        public void ClearProgram()
+        {
+            if (Phase == CoursePhaseV5.Running && Stage == CourseStageV5.Teach && Recorder != null) Recorder.Clear();
+        }
+
+        public void UndoStroke()
+        {
+            if (Phase == CoursePhaseV5.Running && Stage == CourseStageV5.Teach && Recorder != null) Recorder.UndoStroke();
+        }
+
+        public void StepProgramSpeed(float deltaMmS)
+        {
+            if (Stage == CourseStageV5.Execute && Phase == CoursePhaseV5.Running) return;
+            ProgramSpeedMmS = Mathf.Clamp(ProgramSpeedMmS + deltaMmS, MinProgramSpeedMmS, MaxProgramSpeedMmS);
         }
 
         public void FinishExercise()
         {
             if (Phase != CoursePhaseV5.Running) return;
+            if (Teleop != null) Teleop.StopPlayback();
+            if (Recorder != null) Recorder.Teaching = false;
             if (Task != null) Task.FinishTask();
             Phase = CoursePhaseV5.Results;
             SaveResult();
@@ -185,6 +277,8 @@ namespace FrankaVR.V5
         public void BackToMenu()
         {
             if (Task != null) Task.ResetTask();
+            if (Teleop != null) Teleop.StopPlayback();
+            if (Recorder != null) { Recorder.Teaching = false; Recorder.Clear(); }
             Phase = CoursePhaseV5.Selection;
         }
 
@@ -194,8 +288,9 @@ namespace FrankaVR.V5
             {
                 case CoursePhaseV5.Selection: return "SELECCION DE EJERCICIO";
                 case CoursePhaseV5.Briefing:  return "INSTRUCCIONES";
-                case CoursePhaseV5.Running:   return Mode == CourseModeV5.Training
-                    ? (UsesPipeIndexer ? "PRACTICA POR SECTORES" : "ENTRENAMIENTO") : "EXAMEN";
+                case CoursePhaseV5.Running:
+                    string mode = Mode == CourseModeV5.Training ? "PRÁCTICA" : "EXAMEN";
+                    return (Stage == CourseStageV5.Teach ? "ENSEÑAR" : "EJECUTANDO") + " · " + mode;
                 case CoursePhaseV5.Results:   return "RESULTADOS";
                 default: return "";
             }

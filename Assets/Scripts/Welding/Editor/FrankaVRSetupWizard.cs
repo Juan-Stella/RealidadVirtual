@@ -360,5 +360,86 @@ public static class FrankaVRSetupWizard
         EditorSceneManager.SaveScene(torch.gameObject.scene);
         Debug.Log("[FrankaVR] Porta-electrodo orientado hacia la pieza y escena guardada.");
     }
+
+    // Torcha MIG robotizada recta sobre el eje +Y de Soldador (sale del flange):
+    // soporte, cuerpo, cuello, tobera y tubo de contacto. El alambre libre (stick-out)
+    // lo dibuja WeldingTorch desde Tip. El porta-electrodo SMAW queda desactivado.
+    [MenuItem("FrankaVR/14 - Montar torcha MIG")]
+    public static void MountMigTorch()
+    {
+        WeldingTorch torch = Object.FindObjectOfType<WeldingTorch>();
+        if (torch == null || torch.Tip == null) throw new System.InvalidOperationException("No hay WeldingTorch con Tip en la escena");
+        Transform holder = torch.transform;
+        string[] smaw = { "Mango", "Nervadura0", "Nervadura1", "Nervadura2", "Nervadura3", "BocaCable",
+            "Cuello", "MordazaFija", "MordazaMovil", "Palanca", "Resorte", "Electrodo" };
+        foreach (string name in smaw)
+        {
+            Transform part = holder.Find(name);
+            if (part == null || !part.gameObject.activeSelf) continue;
+            Undo.RecordObject(part.gameObject, "Torcha MIG");
+            part.gameObject.SetActive(false);
+        }
+        Shader standard = Shader.Find("Standard");
+        Material Mat(string name, Color color, float metallic, float gloss)
+        {
+            string path = "Assets/Scripts/Welding/Mat" + name + ".mat";
+            Material m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null)
+            {
+                m = new Material(standard) { name = "Mat" + name };
+                AssetDatabase.CreateAsset(m, path);
+            }
+            m.color = color; m.SetFloat("_Metallic", metallic); m.SetFloat("_Glossiness", gloss);
+            EditorUtility.SetDirty(m);
+            return m;
+        }
+        Material black = Mat("TorchBody", new Color(0.07f, 0.075f, 0.08f), 0.2f, 0.45f);
+        Material chrome = Mat("TorchNeck", new Color(0.62f, 0.64f, 0.66f), 0.9f, 0.7f);
+        Material copper = Mat("TorchNozzle", new Color(0.78f, 0.47f, 0.24f), 0.85f, 0.65f);
+        // (nombre, centro Y, diametro, largo, material, collider)
+        var parts = new (string, float, float, float, Material, bool)[] {
+            ("TorchMount",   0.020f, 0.060f, 0.040f, black,  true),
+            ("TorchBody",    0.080f, 0.036f, 0.080f, black,  true),
+            ("TorchNeck",    0.1315f, 0.014f, 0.026f, chrome, true),
+            ("TorchNozzle",  0.1545f, 0.016f, 0.020f, copper, true), // boquilla fina: entra en la esquina de la cartela
+            ("TorchContact", 0.1625f, 0.008f, 0.005f, copper, false) };
+        foreach (var (name, centerY, diameter, length, material, collider) in parts)
+        {
+            Transform part = holder.Find(name);
+            if (part == null)
+            {
+                GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                Undo.RegisterCreatedObjectUndo(go, "Torcha MIG");
+                go.name = name;
+                part = go.transform;
+                part.SetParent(holder, false);
+            }
+            part.localPosition = new Vector3(0f, centerY, 0f);
+            part.localRotation = Quaternion.identity;
+            part.localScale = new Vector3(diameter, length * 0.5f, diameter);
+            part.GetComponent<Renderer>().sharedMaterial = material;
+            Collider c = part.GetComponent<Collider>();
+            if (c != null && !collider) Object.DestroyImmediate(c);
+        }
+        Transform port = holder.Find("TomaCable");
+        if (port != null) { Undo.RecordObject(port, "Torcha MIG"); port.localPosition = new Vector3(0.022f, 0.03f, 0f); }
+        Undo.RecordObject(torch.Tip, "Torcha MIG");
+        torch.Tip.localPosition = new Vector3(0f, 0.165f, 0f); // extremo del tubo de contacto
+        Undo.RecordObject(torch, "Torcha MIG");
+        torch.ElectrodeAxisLocal = Vector3.up;
+        torch.StubLengthMm = 0f;
+        torch.HotTipScale = 0.003f;
+        torch.ElectrodeColdColor = new Color(0.72f, 0.45f, 0.22f, 1f);
+        WeldingMachine machine = Object.FindObjectOfType<WeldingMachine>();
+        if (machine != null)
+        {
+            Undo.RecordObject(machine, "Torcha MIG");
+            machine.AmpMax = 300f; machine.AmpStep = 10f; machine.Amperage = 160f;
+        }
+        AssetDatabase.SaveAssets();
+        EditorSceneManager.MarkSceneDirty(torch.gameObject.scene);
+        EditorSceneManager.SaveScene(torch.gameObject.scene);
+        Debug.Log("[FrankaVR] Torcha MIG montada y escena guardada.");
+    }
 }
 #endif

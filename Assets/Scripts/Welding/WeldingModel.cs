@@ -13,7 +13,9 @@ namespace FrankaVR.Welding
         BurnThrough  // perforacion: exceso de energia
     }
 
-    /// Electrodo revestido SMAW. Los rangos siguen catalogos tipicos de AWS A5.1.
+    /// Consumible del proceso. Hoy: alambre macizo MIG/MAG (AWS A5.18 ER70S-6) con su gas.
+    /// LengthMm es el stick-out (alambre libre fuera del tubo de contacto) y no se consume:
+    /// el alimentador lo repone. Con BurnRateMmPerSec > 0 vuelve a comportarse como varilla SMAW.
     [System.Serializable]
     public class Electrode
     {
@@ -31,14 +33,33 @@ namespace FrankaVR.Welding
         [Tooltip("Descripcion breve para el panel didactico.")]
         public string Notes = "Uso general, arco suave, facil de cebar.";
 
-        /// Regla practica de taller: longitud de arco ideal ~ diametro del electrodo.
-        public float ArcLenIdealMm => DiameterMm;
+        [Tooltip("Largo de arco ideal (mm). 0: regla de SMAW, igual al diametro.")]
+        public float  ArcIdealMm = 0f;
+        public bool   WireFeed => BurnRateMmPerSec <= 0f;
+
+        public float ArcLenIdealMm => ArcIdealMm > 0f ? ArcIdealMm : DiameterMm;
         public float AmpNominal    => (AmpMin + AmpMax) * 0.5f;
     }
 
     public static class ElectrodeLibrary
     {
+        // MIG/MAG sinergico: una sola perilla (corriente); la tension sigue al alambre.
+        // Distancia boquilla-pieza (CTWD) = stick-out + arco: 12-18 mm segun diametro.
         public static Electrode[] Defaults => new[]
+        {
+            new Electrode{ Name="ER70S-6 0.8 · CO2", Family="ER70S-6", DiameterMm=0.8f, LengthMm=10f, AmpMin=60f, AmpMax=150f,
+                           ArcVoltage=19f, DepositFactor=0.90f, BurnRateMmPerSec=0f, ArcIdealMm=3f, ArcLengthTolerance=1.0f,
+                           Notes="Chapa fina, arco corto. CO2 puro: mas penetracion y mas salpicadura." },
+            new Electrode{ Name="ER70S-6 1.0 · Ar/CO2", Family="ER70S-6", DiameterMm=1.0f, LengthMm=12f, AmpMin=90f, AmpMax=220f,
+                           ArcVoltage=22f, DepositFactor=1.00f, BurnRateMmPerSec=0f, ArcIdealMm=3f, ArcLengthTolerance=1.0f,
+                           Notes="Uso general en celdas robotizadas. Mezcla Ar 82 / CO2 18." },
+            new Electrode{ Name="ER70S-6 1.2 · Ar/CO2", Family="ER70S-6", DiameterMm=1.2f, LengthMm=15f, AmpMin=140f, AmpMax=300f,
+                           ArcVoltage=26f, DepositFactor=1.12f, BurnRateMmPerSec=0f, ArcIdealMm=3.5f, ArcLengthTolerance=0.9f,
+                           Notes="Espesores mayores, mucho aporte: exige mas velocidad de avance." },
+        };
+
+        /// Catalogo SMAW anterior, conservado como referencia.
+        public static Electrode[] Smaw => new[]
         {
             new Electrode{ Name="E6013 2.5",  Family="E6013", DiameterMm=2.5f,  LengthMm=350f, AmpMin=60f,  AmpMax=100f, ArcVoltage=22f, DepositFactor=0.90f, BurnRateMmPerSec=3.6f, ArcLengthTolerance=1.2f,
                            Notes="Chapa fina. Arco suave y estable, poca penetracion." },

@@ -16,6 +16,7 @@ namespace FrankaVR.Teleop
         public bool       ToggleHelmet;    // subir/bajar la careta (flanco)
         public bool       ResetOrientation;// devolver el electrodo a la vertical (flanco)
         public bool       MoveClutch;      // si false, no se aplica traslacion (evita deriva)
+        public float      AnalogMagnitude; // 0 = teclas (todo o nada); >0 = palanca analogica, 0..1
 
         public static TeleopCommand Neutral => new TeleopCommand
         {

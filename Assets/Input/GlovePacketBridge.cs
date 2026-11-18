@@ -14,12 +14,15 @@ namespace FrankaVR.Teleop
     /// Formatos CSV soportados:
     ///   IMU,qw,qx,qy,qz,clutch
     ///   BTN,spark,ampPlus,ampMinus,cycle,replace,helmet,resetOrientation[,recenter,nextView,calibrate]
+    ///   CTL,jx,jy,gatillo,acercar,retirar,ok,deshacer,borrar,altura,calibrar,vista,imu,qw,qx,qy,qz
+    ///       (mando ESP32 por Wi-Fi: ver HandControllerInput y UdpControllerReceiver)
     ///
     /// Todos los booleanos pueden ser 0/1 o true/false.
     /// </summary>
     public class GlovePacketBridge : MonoBehaviour
     {
         public BleGloveInput Glove;
+        public HandControllerInput Controller;
         public ViewpointManager Viewpoints;
         public bool LogPackets = false;
 
@@ -29,6 +32,10 @@ namespace FrankaVR.Teleop
         {
             if (Glove == null) Glove = FindObjectOfType<BleGloveInput>();
             if (Viewpoints == null) Viewpoints = FindObjectOfType<ViewpointManager>();
+            // Mando ESP32 por Wi-Fi: receptor UDP y estado del mando junto al puente.
+            if (Controller == null) Controller = FindAnyObjectByType<HandControllerInput>();
+            if (Controller == null) Controller = gameObject.AddComponent<HandControllerInput>();
+            if (GetComponent<UdpControllerReceiver>() == null) gameObject.AddComponent<UdpControllerReceiver>();
         }
 
         public void OnBleMessage(string message)
@@ -44,6 +51,7 @@ namespace FrankaVR.Teleop
                 string kind = p[0].Trim().ToUpperInvariant();
                 if (kind == "IMU") ParseImu(p);
                 else if (kind == "BTN") ParseButtons(p);
+                else if (kind == "CTL") ParseController(p);
             }
             catch (Exception ex)
             {
@@ -97,6 +105,15 @@ namespace FrankaVR.Teleop
             _prevRecenter = recenter;
             _prevNextView = nextView;
             _prevCalibrate = calibrate;
+        }
+
+        void ParseController(string[] p)
+        {
+            if (Controller == null) return;
+            if (p.Length != 17) throw new FormatException("CTL requiere 16 campos");
+            Quaternion q = new Quaternion(F(p[14]), F(p[15]), F(p[16]), F(p[13]));
+            Controller.OnPacket(F(p[1]), F(p[2]), B(p[3]), B(p[4]), B(p[5]), B(p[6]), B(p[7]),
+                B(p[8]), B(p[9]), B(p[10]), B(p[11]), B(p[12]), q);
         }
 
         static float F(string s)
