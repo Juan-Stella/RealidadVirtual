@@ -123,6 +123,9 @@ public static class FrankaVRProjectChecks
 
     static void OnLog(string message, string trace, LogType type)
     {
+        // El indexador de busqueda del Editor falla al arrancar en batchmode cuando el
+        // proyecto no tiene indice (clon nuevo): no es codigo del proyecto.
+        if (trace != null && trace.Contains("UnityEditor.Search.")) return;
         if (type == LogType.Exception || type == LogType.Error || type == LogType.Assert)
             Complete(false, message + "\n" + trace);
     }
