@@ -104,6 +104,10 @@ public class PandaIK : MonoBehaviour
     public float maxLinearSpeed = 0.6f;
     [Tooltip("Velocidad maxima de giro pedida a la herramienta, en grados/s.")]
     public float maxAngularSpeedDeg = 120f;
+    [Tooltip("La fisica avanza una vez por cuadro dibujado (FramePhysicsDriver): el brazo se mueve " +
+             "lo mismo en cada cuadro. Con el paso fijo, segun el cuadro entraban 0, 1, 2 o 3 pasos " +
+             "de fisica y el movimiento se veia a los saltos.")]
+    public bool physicsPerFrame = true;
 
     [Header("Estado")]
     [Tooltip("Arranca APAGADO a proposito: la IK no debe moverse sola. " +
@@ -212,8 +216,22 @@ public class PandaIK : MonoBehaviour
     bool leadActive;
     float graceTimer;
 
+    void Start()
+    {
+        if (physicsPerFrame && FindAnyObjectByType<FramePhysicsDriver>() == null)
+            gameObject.AddComponent<FramePhysicsDriver>();
+    }
+
     void FixedUpdate()
     {
+        if (!FramePhysicsDriver.Active) ServoStep(Time.fixedDeltaTime);
+    }
+
+    /// <summary>Un paso del servo de dt segundos. Lo llama FixedUpdate o, con la fisica por
+    /// cuadro, FramePhysicsDriver justo antes de cada Physics.Simulate.</summary>
+    public void ServoStep(float dt)
+    {
+        if (dt <= 0f) return;
         if (!solving || endEffector == null || target == null)
         {
             // Sin servo, el drive no debe seguir "empujando" con el adelanto de velocidad.
@@ -227,7 +245,7 @@ public class PandaIK : MonoBehaviour
         // del URDF y el brazo arrancaba torcido en vez de vertical.
         if (graceTimer < startupGraceSec)
         {
-            graceTimer += Time.fixedDeltaTime;
+            graceTimer += dt;
             wasSolving = false;   // al terminar la gracia cuenta como primera activacion
             return;
         }
@@ -237,13 +255,12 @@ public class PandaIK : MonoBehaviour
         if (!wasSolving) arm.SyncTargetsToActual();
         wasSolving = true;
 
-        Step();
+        Step(dt);
     }
 
-    void Step()
+    void Step(float dt)
     {
         Vector3 ee = endEffector.position;
-        float dt = Time.fixedDeltaTime;
         // El servo anterior se calibro a 50 Hz: sus limites "por paso" se escalan para que
         // a otra frecuencia de fisica se comporte igual por segundo.
         float stepScale = dt / 0.02f;
@@ -343,7 +360,7 @@ public class PandaIK : MonoBehaviour
         float ratio = 0f;
         for (int i = 0; i < PandaArm.N; i++)
         {
-            float cap = MaxDegPerSec[i] * speedFactor * Time.fixedDeltaTime;
+            float cap = MaxDegPerSec[i] * speedFactor * dt;
             if (cap > 1e-6f) ratio = Mathf.Max(ratio, Mathf.Abs(dDeg[i]) / cap);
         }
         float scale = (ratio > 1f) ? 1f / ratio : 1f;

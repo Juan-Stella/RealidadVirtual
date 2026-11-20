@@ -129,9 +129,12 @@ namespace FrankaVR.V6
             SafeDestroy(bg.GetComponent<Collider>());
             Renderer bgRenderer = bg.GetComponent<Renderer>();
             bgRenderer.sortingOrder = -10;
+            // Documento modal: fondo y botones encima de la escena (el robot suele quedar mas cerca).
+            Shader panel = Resources.Load<Shader>("FrankaVRUIPanel");
+            if (panel != null) sh = panel;
             if (sh != null)
             {
-                _docBgMat = new Material(sh); _docBgMat.color = new Color(0.03f, 0.045f, 0.065f, 0.96f);
+                _docBgMat = new Material(sh); _docBgMat.color = new Color(0.03f, 0.045f, 0.065f, 1f);
                 bgRenderer.sharedMaterial = _docBgMat;
                 _closeMat = new Material(sh); _closeMat.color = new Color(0.30f, 0.10f, 0.06f, 0.95f);
             }
@@ -172,6 +175,9 @@ namespace FrankaVR.V6
                 new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter);
             SetText(note, "Mirá un botón 1 s (o miralo y apretá OK en el mando) para elegirlo · F1, Esc o CERRAR para volver",
                 DocWidth - 0.12f, 0.04f);
+            // El orden de dibujo transparente va primero por sortingOrder: sin este salto,
+            // vidrios y carteles del taller se dibujan despues y atraviesan el documento.
+            foreach (Renderer r in doc.GetComponentsInChildren<Renderer>(true)) r.sortingOrder += 1000;
             doc.SetActive(false);
         }
 

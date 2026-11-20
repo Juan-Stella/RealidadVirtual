@@ -431,7 +431,9 @@ namespace FrankaVR.Welding
                     if (_keyboard != null) _keyboard.SetOrientation(Quaternion.FromToRotation(BaseApproach.normalized, axis));
                 }
                 _physicalTarget = Vector3.MoveTowards(_physicalTarget, destination, ApproachSpeed * dt);
-                if (Vector3.Distance(actual, destination) < 0.005f)
+                // La ultima etapa termina con la punta a la distancia de arco (no 5 mm arriba).
+                float reach = _approachStage == 3 && _approachTime < 2f ? 0.002f : 0.005f;
+                if (Vector3.Distance(actual, destination) < reach)
                 {
                     if (++_approachStage > 3) _approachStage = -1;
                     _approachTime = 0f;
@@ -556,7 +558,8 @@ namespace FrankaVR.Welding
             {
                 // El programa avanza solo si el robot lo sigue; si se atrasa, espera.
                 // Arranque y crater: el arco queda quieto ArcDwellSec en cada extremo, como en un robot real.
-                _dwell += dt;
+                // La espera cuenta con el arco ya establecido (el cebado no la consume).
+                if (Torch == null || Torch.Arcing || _playTime > 1.5f) _dwell += dt;
                 if (_dwell > ArcDwellSec && _playS < total && Vector3.Distance(actual, _physicalTarget) < 0.004f)
                 {
                     _playS = Mathf.Min(total, _playS + _playSpeed * dt);
@@ -569,7 +572,9 @@ namespace FrankaVR.Welding
             else destination = point - dir * 0.05f;
             axis = LimitTilt(dir);
             _physicalTarget = _playStage == 2 ? destination : Vector3.MoveTowards(_physicalTarget, destination, ApproachSpeed * dt);
-            bool arrived = Vector3.Distance(actual, destination) < 0.004f && (_playStage != 2 || (_playS >= total && _dwell > ArcDwellSec));
+            // Cebar recien con la punta sobre el primer punto: si no, el arco arranca largo y la chapa queda fria.
+            float reach = _playStage == 1 && _playTime < 3f ? 0.002f : 0.004f;
+            bool arrived = Vector3.Distance(actual, destination) < reach && (_playStage != 2 || (_playS >= total && _dwell > ArcDwellSec));
             if (arrived) { _playStage++; _playTime = _dwell = 0f; }
             if (_playTime > 15f) { AssistMessage = "EJECUCIÓN DETENIDA — el robot no alcanzó la trayectoria"; _playStage = 4; }
             if (_playStage > 3)

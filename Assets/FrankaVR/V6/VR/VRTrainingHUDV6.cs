@@ -92,7 +92,9 @@ namespace FrankaVR.V6
             _alertBg = alertBox.GetComponent<Renderer>();
             _alertBg.sortingOrder = -9;
 
-            Shader sh = Shader.Find("Sprites/Default");
+            // Fondo y botones encima de la escena, como el texto: si no, la mesa o el robot los tapan.
+            Shader sh = Resources.Load<Shader>("FrankaVRUIPanel");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
             if (sh != null)
             {
                 _bgMat = new Material(sh); _bgMat.color = new Color(0.02f, 0.03f, 0.045f, 0.80f);
@@ -127,6 +129,8 @@ namespace FrankaVR.V6
             _pipeForward = GazeButton.CreateUI(_root, "CAÑO +", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(15f), _bgMat);
             _clearButton = GazeButton.CreateUI(_root, "BORRAR", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.ClearProgram(), _bgMat);
             _executeButton = GazeButton.CreateUI(_root, "EJECUTAR", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.ExecuteProgram(), _bgMat);
+            // Encima de vidrios y brillos del taller (el orden transparente va primero por sortingOrder).
+            foreach (Renderer r in _root.GetComponentsInChildren<Renderer>(true)) r.sortingOrder += 1000;
         }
 
         Transform MakeBar(string name, Vector3 localPos, Vector2 size, Material material, int order)

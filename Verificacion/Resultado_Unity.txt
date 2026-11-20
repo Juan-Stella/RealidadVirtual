@@ -1,2 +1,2 @@
 PASS
-Referencias, curso N1-N5, superficies, CSV, timeouts, cierre, deposicion y control de punta N1 verificados.
+Control de punta N1: aproximacion, avance, arco, orientacion, superficies y exclusion de examen verificados.

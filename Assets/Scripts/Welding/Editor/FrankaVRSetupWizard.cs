@@ -396,8 +396,15 @@ public static class FrankaVRSetupWizard
         Material black = Mat("TorchBody", new Color(0.07f, 0.075f, 0.08f), 0.2f, 0.45f);
         Material chrome = Mat("TorchNeck", new Color(0.62f, 0.64f, 0.66f), 0.9f, 0.7f);
         Material copper = Mat("TorchNozzle", new Color(0.78f, 0.47f, 0.24f), 0.85f, 0.65f);
+        Material aluminum = Mat("TorchFlange", new Color(0.70f, 0.72f, 0.75f), 0.8f, 0.55f);
+        Material sensor = Mat("TorchSensor", new Color(0.13f, 0.20f, 0.30f), 0.4f, 0.5f);
         // (nombre, centro Y, diametro, largo, material, collider)
+        // La brida del Panda queda en Y = -0.154 (panda_link8 esta corrido a donde terminaba la pinza):
+        // adaptador + sensor anticolision + brazo de la torcha cubren ese tramo, sin cambiar el TCP.
         var parts = new (string, float, float, float, Material, bool)[] {
+            ("TorchFlange", -0.148f, 0.066f, 0.012f, aluminum, true),
+            ("TorchSensor", -0.117f, 0.056f, 0.050f, sensor,   true),
+            ("TorchArm",    -0.046f, 0.040f, 0.092f, black,    true),
             ("TorchMount",   0.020f, 0.060f, 0.040f, black,  true),
             ("TorchBody",    0.080f, 0.036f, 0.080f, black,  true),
             ("TorchNeck",    0.1315f, 0.014f, 0.026f, chrome, true),
@@ -435,6 +442,14 @@ public static class FrankaVRSetupWizard
         {
             Undo.RecordObject(machine, "Torcha MIG");
             machine.AmpMax = 300f; machine.AmpStep = 10f; machine.Amperage = 160f;
+        }
+        // Luz del arco MIG: con 6 de intensidad y 2.5 m de alcance el brazo blanco quedaba quemado.
+        // El brillo del arco lo da WeldArcVisualEnhancerV6; esta luz solo ilumina la zona de trabajo.
+        WeldingFX fx = Object.FindObjectOfType<WeldingFX>();
+        if (fx != null)
+        {
+            Undo.RecordObject(fx, "Torcha MIG");
+            fx.BaseIntensity = 2.5f; fx.LightRange = 1.2f;
         }
         AssetDatabase.SaveAssets();
         EditorSceneManager.MarkSceneDirty(torch.gameObject.scene);
