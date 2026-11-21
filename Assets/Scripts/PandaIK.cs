@@ -138,6 +138,7 @@ public class PandaIK : MonoBehaviour
     readonly float[,] A = new float[M, M + 1];
     readonly float[] y = new float[M];
     readonly float[] dDeg = new float[PandaArm.N];
+    readonly float[] _col = new float[M];
 
     public float ErrorMeters =>
         (endEffector != null && target != null)
@@ -406,13 +407,13 @@ public class PandaIK : MonoBehaviour
             for (int c = 0; c < M; c++)
                 A[r, c] = 0f;
 
+        // Buffer reutilizado: antes se creaba un arreglo por junta en cada paso de fisica
+        // (~840 por segundo a 120 Hz), basura que en el celular dispara el recolector.
+        float[] col = _col;
         for (int i = 0; i < PandaArm.N; i++)
         {
-            float[] col =
-            {
-                colLin[i].x, colLin[i].y, colLin[i].z,
-                colAng[i].x, colAng[i].y, colAng[i].z
-            };
+            col[0] = colLin[i].x; col[1] = colLin[i].y; col[2] = colLin[i].z;
+            col[3] = colAng[i].x; col[4] = colAng[i].y; col[5] = colAng[i].z;
 
             for (int r = 0; r < M; r++)
                 for (int c = 0; c < M; c++)

@@ -209,8 +209,18 @@ namespace FrankaVR.V6
             bool teach = !index && Course != null && Course.Phase == CoursePhaseV5.Running && Course.Stage == CourseStageV5.Teach;
             _clearButton.gameObject.SetActive(teach);
             _executeButton.gameObject.SetActive(teach);
-            UpdateText();
+            // 20 veces por segundo alcanza para leer: armar los textos en cada cuadro generaba
+            // basura constante y, en el celular, tirones periodicos del recolector.
+            if (Time.unscaledTime >= _nextText)
+            {
+                _nextText = Time.unscaledTime + TextIntervalSec;
+                UpdateText();
+            }
         }
+
+        [Tooltip("Cada cuanto se rearman los textos y el indicador de distancia (s).")]
+        public float TextIntervalSec = 0.05f;
+        float _nextText;
 
         void UpdateText()
         {
@@ -272,7 +282,7 @@ namespace FrankaVR.V6
             if (Torch == null) return "";
             if (Course != null && Course.Phase != CoursePhaseV5.Running) return "";
             if (_teleop != null && _teleop.Retracting) return "RETIRANDO HERRAMIENTA — mover para cancelar";
-            if (_teleop != null && _teleop.Approaching) return "ACERCANDO PUNTA — B o mover para cancelar";
+            if (_teleop != null && _teleop.Approaching) return "ACERCANDO PUNTA — B / ACERCAR o mover para cancelar";
             if (_collisions != null && _collisions.Colliding) return _collisions.CollisionLabel;
             if (_teleop != null && !string.IsNullOrEmpty(_teleop.AssistMessage)) return _teleop.AssistMessage;
             if (Course != null && !string.IsNullOrEmpty(Course.ProgramMessage)) return Course.ProgramMessage;

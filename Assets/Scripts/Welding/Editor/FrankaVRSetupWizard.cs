@@ -36,6 +36,10 @@ public static class FrankaVRSetupWizard
         PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { UnityEngine.Rendering.GraphicsDeviceType.OpenGLES3 });
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
         PlayerSettings.Android.targetSdkVersion = (AndroidSdkVersions)36;
+        // Guia oficial de Cardboard para Unity 2023.1+: Activity (no GameActivity) y sin Optimized Frame Pacing.
+        // Las dependencias Java del SDK las agrega CardboardAndroidGradle al generar el proyecto Gradle.
+        PlayerSettings.Android.applicationEntry = AndroidApplicationEntry.Activity;
+        PlayerSettings.Android.optimizedFramePacing = false;
         // Los meshes URDF ya estan importados. Sus librerias nativas de escritorio
         // no deben empaquetarse como plugins Android (x86/x64 comparten nombre).
         foreach (PluginImporter plugin in PluginImporter.GetAllImporters())

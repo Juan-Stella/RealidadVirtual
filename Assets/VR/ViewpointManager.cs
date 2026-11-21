@@ -205,7 +205,9 @@ public class ViewpointManager : MonoBehaviour
         _fadeQuad.localScale = Vector3.one * 1.2f;
 
         _fadeMat = new Material(shader);
-        go.GetComponent<Renderer>().material = _fadeMat;
+        Renderer fade = go.GetComponent<Renderer>();
+        fade.material = _fadeMat;
+        fade.sortingOrder = 32000; // el fundido tambien cubre HUD, menu y puntero (se dibujan encima de la escena)
         SetFadeAlpha(0f);
     }
 

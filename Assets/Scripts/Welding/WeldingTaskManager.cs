@@ -101,7 +101,9 @@ namespace FrankaVR.Welding
                 _arcLenSqSum += Torch.ArcLenMm * Torch.ArcLenMm;
                 _arcSamples++;
             }
-            if (_prevArcing && !arcing && !Torch.Stuck) ArcBreaks++;
+            // Corte = el arco se apaga mientras se lo sigue pidiendo (soltar el gatillo o el fin
+            // del programa no es un corte; antes cada ejecucion sumaba uno).
+            if (_prevArcing && !arcing && !Torch.Stuck && Torch.SparkRequested) ArcBreaks++;
             if (Torch.Stuck && !_prevStuck) StickCount++;
             _prevArcing = arcing;
             _prevStuck  = Torch.Stuck;

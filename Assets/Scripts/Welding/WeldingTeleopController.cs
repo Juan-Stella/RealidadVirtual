@@ -691,7 +691,7 @@ namespace FrankaVR.Welding
                 MotionBlocked = true;
                 Ik.solving = false;
                 AssistMessage = NearJointLimit() ? "LÍMITE DE ALCANCE — mover en otra dirección" :
-                    "MOVIMIENTO BLOQUEADO — E: retirar / C: recuperar";
+                    "MOVIMIENTO BLOQUEADO — mover en otra dirección o RETIRAR (C)";
             }
             _stallTime = 0f;
         }

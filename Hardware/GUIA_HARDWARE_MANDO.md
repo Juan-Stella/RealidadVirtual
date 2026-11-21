@@ -153,7 +153,7 @@ CTL,jx,jy,gatillo,acercar,retirar,ok,deshacer,borrar,altura,calibrar,vista,imu,q
 1. Compilá el APK como siempre. *Internet Access = Require* ya quedó activado en Player Settings.
 2. Poné el celular en **modo avión, activá solo el Wi-Fi** y conectalo a FrankaVR-Mando. Si aparece "sin internet", elegí mantener la conexión.
 
-   Esto es necesario porque con datos móviles prendidos Android manda el tráfico por la red móvil y los paquetes no llegan.
+   Esto es necesario porque con datos móviles prendidos Android manda el tráfico por la red móvil y los paquetes no llegan. Desde la rama `revision-android-20261121` la app intenta atarse sola a la red Wi-Fi (permiso `ACCESS_NETWORK_STATE`, sin probar en un celular todavía): si el mando anda con datos móviles prendidos, este paso deja de ser obligatorio.
 3. Abrí la app, poné los lentes y apretá OK largo para calibrar con el mando apuntando hacia adelante.
 
 ## 7. Problemas comunes

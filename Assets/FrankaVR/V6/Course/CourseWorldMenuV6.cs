@@ -234,8 +234,19 @@ namespace FrankaVR.V6
             _root.rotation = FollowCameraYaw
                 ? Quaternion.LookRotation(_root.position - cam.position, body.up)
                 : Quaternion.identity;
-            UpdateText();
+            // Rearmar los textos genera basura en cada cuadro (en el celular, tirones del GC):
+            // solo al cambiar el estado del curso y, por las dudas, dos veces por segundo.
+            int state = Course != null ? ((int)Course.Phase * 31 + Course.SelectedExercise) * 31 + (int)Course.Mode : -1;
+            if (state != _textState || Time.unscaledTime >= _nextText)
+            {
+                _textState = state;
+                _nextText = Time.unscaledTime + 0.5f;
+                UpdateText();
+            }
         }
+
+        int _textState = int.MinValue;
+        float _nextText;
 
         void UpdateText()
         {
