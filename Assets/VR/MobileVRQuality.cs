@@ -33,7 +33,7 @@ public class MobileVRQuality : MonoBehaviour
             var pose = camera.GetComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
             if (pose == null) pose = camera.gameObject.AddComponent<UnityEngine.SpatialTracking.TrackedPoseDriver>();
             pose.SetPoseSource(UnityEngine.SpatialTracking.TrackedPoseDriver.DeviceType.GenericXRDevice,
-                UnityEngine.SpatialTracking.TrackedPoseDriver.TrackedPose.Head);
+                UnityEngine.SpatialTracking.TrackedPoseDriver.TrackedPose.Center);
             pose.trackingType = UnityEngine.SpatialTracking.TrackedPoseDriver.TrackingType.RotationOnly;
             pose.updateType = UnityEngine.SpatialTracking.TrackedPoseDriver.UpdateType.UpdateAndBeforeRender;
         }
