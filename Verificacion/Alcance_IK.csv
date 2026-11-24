@@ -1,7 +1,7 @@
 ejercicio,precision,punto,error_punta_mm,error_direccion_grados,arco_mm,objetivo_limitado
-M1,0,30,7.89,3.49,8.75,False
-M1,1,30,2.99,0.87,0.74,False
-M2,0,30,7.76,3.35,8.07,False
-M2,1,30,2.95,0.79,5.61,False
-M3,0,30,7.93,3.52,2.90,False
-M3,1,30,2.97,0.84,3.18,False
+M1,0,30,7.90,3.48,9.10,False
+M1,1,30,2.99,0.87,0.71,False
+M2,0,30,7.75,3.35,8.07,False
+M2,1,30,2.99,0.79,5.63,False
+M3,0,30,8.00,3.53,2.84,False
+M3,1,30,2.96,0.84,3.18,False

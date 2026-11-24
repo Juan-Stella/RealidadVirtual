@@ -58,6 +58,7 @@ namespace FrankaVR.V6
             { "#VISTA Y MENÚ", "TECLADO", "MANDO" },
             { "Elegir un botón", "Mirarlo 1 s o clic", "Mirarlo + OK" },
             { "Cambiar vista", "N / P o VISTA", "ACERCAR largo" },
+            { "Moverse por la planta", "MOVERSE o F2: clic en piso, WASD", "MOVERSE: mirar + OK, palanca" },
             { "Calibrar mando y vista", "—", "OK largo" },
             { "Moverse y mirar (PC)", "Flechas, RePág/AvPág, mouse", "—" },
             { "Zoom (PC)", "Rueda · Retroceso", "—" },

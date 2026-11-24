@@ -41,6 +41,7 @@ namespace FrankaVR.V6
         RobotCollisionGuard _collisions;
         WeldingTeleopController _teleop;
         CourseWorldMenuV6 _menu;
+        OperatorMoveV6 _move;
 
         void Start()
         {
@@ -122,13 +123,15 @@ namespace FrankaVR.V6
             _metrics  = MakeText("Metrics",  new Vector3(0f, 0.035f, -0.004f), 52, 0.0078f, new Color(0.82f, 0.89f, 0.98f), TextAnchor.MiddleCenter);
             _help     = MakeText("Help",     new Vector3(0f, -0.052f, -0.004f), 42, 0.0062f, new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter);
             _alert    = MakeText("Alert",    new Vector3(0f, -0.128f, -0.005f), 58, 0.0082f, new Color(1f, 0.84f, 0.32f), TextAnchor.MiddleCenter);
-            GazeButton.CreateUI(_root, "FIN", new Vector3(-0.42f,-0.21f,-0.014f), 0.18f, () => Course.FinishExercise(), _bgMat);
-            GazeButton.CreateUI(_root, "CONTROLES", new Vector3(-0.21f,-0.21f,-0.014f), 0.18f, () => { if (_menu != null) _menu.ToggleControls(); }, _bgMat);
-            GazeButton.CreateUI(_root, "VISTA", new Vector3(0f,-0.21f,-0.014f), 0.18f, () => Viewpoints.Next(), _bgMat);
-            _pipeBack = GazeButton.CreateUI(_root, "CAÑO -", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(-15f), _bgMat);
-            _pipeForward = GazeButton.CreateUI(_root, "CAÑO +", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(15f), _bgMat);
-            _clearButton = GazeButton.CreateUI(_root, "BORRAR", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.ClearProgram(), _bgMat);
-            _executeButton = GazeButton.CreateUI(_root, "EJECUTAR", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.ExecuteProgram(), _bgMat);
+            _move = OperatorMoveV6.Ensure(PlayerCamera, Viewpoints);
+            GazeButton.CreateUI(_root, "FIN", new Vector3(-0.475f,-0.21f,-0.014f), 0.17f, () => Course.FinishExercise(), _bgMat);
+            GazeButton.CreateUI(_root, "CONTROLES", new Vector3(-0.285f,-0.21f,-0.014f), 0.17f, () => { if (_menu != null) _menu.ToggleControls(); }, _bgMat);
+            GazeButton.CreateUI(_root, "VISTA", new Vector3(-0.095f,-0.21f,-0.014f), 0.17f, () => Viewpoints.Next(), _bgMat);
+            GazeButton.CreateUI(_root, "MOVERSE", new Vector3(0.095f,-0.21f,-0.014f), 0.17f, () => _move.Toggle(), _bgMat);
+            _pipeBack = GazeButton.CreateUI(_root, "CAÑO -", new Vector3(0.285f,-0.21f,-0.014f), 0.17f, () => Course.IndexPipe(-15f), _bgMat);
+            _pipeForward = GazeButton.CreateUI(_root, "CAÑO +", new Vector3(0.475f,-0.21f,-0.014f), 0.17f, () => Course.IndexPipe(15f), _bgMat);
+            _clearButton = GazeButton.CreateUI(_root, "BORRAR", new Vector3(0.285f,-0.21f,-0.014f), 0.17f, () => Course.ClearProgram(), _bgMat);
+            _executeButton = GazeButton.CreateUI(_root, "EJECUTAR", new Vector3(0.475f,-0.21f,-0.014f), 0.17f, () => Course.ExecuteProgram(), _bgMat);
             // Encima de vidrios y brillos del taller (el orden transparente va primero por sortingOrder).
             foreach (Renderer r in _root.GetComponentsInChildren<Renderer>(true)) r.sortingOrder += 1000;
         }
@@ -251,7 +254,13 @@ namespace FrankaVR.V6
                     "Puntos correctos  " + Task.GoodPoints + "   Sin soldar  " + Task.UntouchedPoints;
             SetText(_metrics, metrics, Width * 0.90f, 0.085f);
 
-            if (running && input == "Mando")
+            if (OperatorMoveV6.Active)
+            {
+                SetText(_help, input == "Mando"
+                    ? "MOVERSE · mirá el piso + OK: ir ahí · palanca: caminar · MOVERSE: volver a soldar"
+                    : "MOVERSE · mirá el piso y tocá (clic): ir ahí · WASD: caminar · MOVERSE: volver a soldar", Width * 0.90f, 0.045f);
+            }
+            else if (running && input == "Mando")
             {
                 // Con el mando ESP32 (lentes puestos) se muestran sus botones, no el teclado.
                 if (!teaching) SetText(_help, "El robot repite tu trayectoria con arco · RETIRAR: abortar", Width * 0.90f, 0.045f);

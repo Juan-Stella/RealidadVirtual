@@ -125,6 +125,7 @@ namespace FrankaVR.V5
                 if (_menu == null) _menu = FindAnyObjectByType<FrankaVR.V6.CourseWorldMenuV6>();
                 if (gaze != null && gaze.Current != null && gaze.Current.isActiveAndEnabled) gaze.Current.Activate();
                 else if (_menu != null && _menu.ControlsOpen) _menu.SetControlsOpen(false); // con el documento abierto, OK lo cierra
+                else if (FrankaVR.V6.OperatorMoveV6.Active) FrankaVR.V6.OperatorMoveV6.ConfirmFromController(); // MOVERSE: OK lleva al punto marcado, nunca ejecuta
                 else if (Phase == CoursePhaseV5.Running && Stage == CourseStageV5.Teach) ExecuteProgram();
             }
             if (_hand.ConsumeUndo()) { if (UsesPipeIndexer) IndexPipe(-15f); else UndoStroke(); }

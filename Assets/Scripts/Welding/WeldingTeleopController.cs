@@ -273,6 +273,8 @@ namespace FrankaVR.Welding
                 else { ViewAxes(out Vector3 f, out Vector3 r); _keyboard.TiltRight = r; _keyboard.TiltForward = f; }
             }
             TeleopCommand cmd = _in.Poll(Ik.endEffector.rotation);
+            // Modo MOVERSE: la palanca/WASD mueven al operario, no la torcha.
+            if (FrankaVR.V6.OperatorMoveV6.Active) { cmd.TranslationRate = Vector3.zero; cmd.AnalogMagnitude = 0f; cmd.SparkHeld = false; }
             bool keyboardMotion = _in is KeyboardTeleopInput ||
                 (_in is HybridTeleopInput hybrid && !hybrid.GloveMotionActive);
             // Practica: V cerca de la junta pone el angulo recomendado en vez de la vertical.
