@@ -276,7 +276,10 @@ namespace FrankaVR.V6
             }
             else
             {
-                SetText(_help, "CONTROLES (o F1): todos los comandos de teclado y mando", Width * 0.90f, 0.045f);
+                string phoneUrl = PhoneControllerServer.CurrentUrl;
+                SetText(_help, input != "Mando" && !string.IsNullOrEmpty(phoneUrl)
+                    ? "Mando celular: abrí " + phoneUrl + " en el otro celular · CONTROLES (o F1): comandos"
+                    : "CONTROLES (o F1): todos los comandos de teclado y mando", Width * 0.90f, 0.045f);
             }
 
             string alert = ComputeAlert();

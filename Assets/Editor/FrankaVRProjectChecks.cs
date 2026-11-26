@@ -654,6 +654,55 @@ public static class FrankaVRProjectChecks
         while (Time.unscaledTime < until) yield return null;
         Require(!hand.Connected && !hand.Trigger && hybrid.ActiveMotionSource != "Mando", "El timeout no libera el mando");
         Debug.Log("[Mando] paquetes=" + hand.Packets + " recibidos UDP=" + udp.Received);
+
+        // Mando celular: la misma linea CTL por HTTP al servidor de la app (pagina MandoCelular.html).
+        var phone = One<PhoneControllerServer>();
+        Require(phone.Listening, "El servidor del mando celular no abrio el puerto " + phone.Port + ": " + phone.LastError);
+        string page = HttpRequest(phone.Port, "GET", "/", null);
+        Require(page.StartsWith("HTTP/1.1 200") && page.Contains("FrankaVR · Mando"), "GET / no devuelve la pagina del mando celular");
+        string bad = HttpRequest(phone.Port, "POST", "/mando", "HOLA");
+        Require(bad.Contains("\"ok\":false"), "El servidor acepta un paquete invalido");
+        int before = phone.Packets;
+        Vector3 start = torch.ArcOriginPosition;
+        string phonePacket = Ctl(1f, 0f, "0,0,0,0,0,0,0,0,0", false, Quaternion.identity).Trim();
+        float phoneUntil = Time.unscaledTime + 1.0f, phoneNext = 0f;
+        string reply = "";
+        bool tookOver = false;
+        while (Time.unscaledTime < phoneUntil)
+        {
+            if (Time.unscaledTime >= phoneNext) { phoneNext = Time.unscaledTime + 0.04f; reply = HttpRequest(phone.Port, "POST", "/mando", phonePacket); }
+            tookOver |= hand.Connected && hybrid.ActiveMotionSource == "Mando";
+            yield return null;
+        }
+        Require(reply.Contains("\"ok\":true"), "El servidor rechaza el CTL del celular: " + reply);
+        Require(phone.Packets - before > 10 && tookOver, "La app no toma el mando celular: paquetes=" + (phone.Packets - before) + " fuente=" + hybrid.ActiveMotionSource);
+        Require(Vector3.Distance(torch.ArcOriginPosition, start) > 0.02f, "La palanca del celular no mueve la torcha");
+        until = Time.unscaledTime + 0.7f;
+        while (Time.unscaledTime < until) yield return null;
+        Require(!hand.Connected, "El timeout no libera el mando celular");
+        Debug.Log("[Mando celular] paquetes HTTP=" + (phone.Packets - before) + " url=" + phone.Url);
+    }
+
+    // Pedido HTTP sincrono a 127.0.0.1 (respuestas chicas, servidor en otro hilo).
+    static string HttpRequest(int port, string method, string path, string body)
+    {
+        using (var client = new System.Net.Sockets.TcpClient())
+        {
+            client.Connect(System.Net.IPAddress.Loopback, port);
+            client.ReceiveTimeout = 2000;
+            var stream = client.GetStream();
+            byte[] content = System.Text.Encoding.ASCII.GetBytes(body ?? "");
+            string head = method + " " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n" +
+                          (body != null ? "Content-Type: text/plain\r\nContent-Length: " + content.Length + "\r\n" : "") + "\r\n";
+            byte[] h = System.Text.Encoding.ASCII.GetBytes(head);
+            stream.Write(h, 0, h.Length);
+            if (body != null) stream.Write(content, 0, content.Length);
+            var ms = new System.IO.MemoryStream();
+            var buffer = new byte[8192];
+            int n;
+            while ((n = stream.Read(buffer, 0, buffer.Length)) > 0) ms.Write(buffer, 0, n);
+            return System.Text.Encoding.UTF8.GetString(ms.ToArray());
+        }
     }
 
     static void Send(System.Net.Sockets.UdpClient sender, System.Net.IPEndPoint to, string packet)

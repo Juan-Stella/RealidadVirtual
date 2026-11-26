@@ -36,6 +36,8 @@ namespace FrankaVR.Teleop
             if (Controller == null) Controller = FindAnyObjectByType<HandControllerInput>();
             if (Controller == null) Controller = gameObject.AddComponent<HandControllerInput>();
             if (GetComponent<UdpControllerReceiver>() == null) gameObject.AddComponent<UdpControllerReceiver>();
+            // Mando en un segundo celular (pagina web servida por la app, puerto 8080): mismo CTL.
+            if (GetComponent<PhoneControllerServer>() == null) gameObject.AddComponent<PhoneControllerServer>();
         }
 
         public void OnBleMessage(string message)

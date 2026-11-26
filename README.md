@@ -6,6 +6,8 @@ Simulador didáctico de soldadura SMAW con robot Franka Panda, desarrollado en U
 
 Para instalar desde cero, probar en PC, preparar Android y colaborar con Git: **[Guía de instalación y trabajo en equipo](GUIA_INSTALACION_Y_COLABORACION.md)**.
 
+Para controlar el robot desde un segundo celular (navegador, sin hardware): **[Guía del mando celular](GUIA_MANDO_CELULAR.md)**.
+
 1. Clonar este repositorio.
 2. Agregar su carpeta raíz a Unity Hub con Unity **6000.5.10f1**.
 3. Esperar la importación y resolución de paquetes; Cardboard y URDF Importer requieren acceso a sus repositorios Git.

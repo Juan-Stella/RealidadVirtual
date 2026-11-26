@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#141E32">
+<meta name="mobile-web-app-capable" content="yes">
+<title>FrankaVR · Mando</title>
+<!-- Mando celular de FrankaVR. Lo sirve la app Unity (PhoneControllerServer.cs) en el puerto 8080.
+     Estilo y manejo de toques tomados del modo Actuador del HMI de la CAVE (Drive "Cave Nov 2026").
+     Manda la misma linea CTL que el mando ESP32 (Hardware/GUIA_HARDWARE_MANDO.md). -->
+<style>
+  :root {
+    --fondo: #141E32; --fondo2: #283246; --panel: #1E2A44; --panel2: #18233A; --borde: #2B3A57;
+    --texto: #EAF0FA; --tenue: #9FB3D1; --tenue2: #6F84A6;
+    --azul: #64B4FF; --verde: #46B464; --verdeT: #7FD99A;
+    --amarillo: #E8C547; --amarilloT: #F3DB85; --rojo: #E5675C; --rojoT: #F4A39B;
+    --naranja: #F0A04B; --naranjaT: #F7C27E;
+    --mono: ui-monospace, "SF Mono", Consolas, "Roboto Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { background: var(--fondo); color: var(--texto); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+         touch-action: none; display: flex; flex-direction: column;
+         padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  button { font-family: inherit; }
+
+  .cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .marca { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--tenue); }
+  .conexion { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+  .conexion .punto { width: 10px; height: 10px; border-radius: 50%; background: var(--rojo); }
+  .conexion.ok .punto { background: var(--verde); box-shadow: 0 0 8px var(--verde); }
+  .conexion.ok { color: var(--verdeT); } .conexion.mal { color: var(--rojoT); }
+  .etiqueta { border: 1px solid var(--borde); background: var(--panel2); color: var(--tenue); border-radius: 10px;
+              padding: 6px 10px; font-size: 12px; }
+  #aviso { font-size: 13px; color: var(--naranjaT); min-height: 18px; margin: 4px 0; }
+
+  .zona { flex: 1; min-height: 0; display: grid; gap: 10px 14px; align-items: center; justify-items: center;
+          grid-template-columns: 1fr; grid-template-rows: 1fr auto auto;
+          grid-template-areas: "palanca" "principal" "extra"; }
+  .g-palanca { grid-area: palanca; } .g-principal { grid-area: principal; } .g-extra { grid-area: extra; }
+  .grupo { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .grupo-nombre { font-size: 12px; color: var(--tenue); letter-spacing: .06em; text-transform: uppercase; }
+
+  /* Palanca analógica */
+  #pad { position: relative; width: min(62vw, 46vh, 240px); aspect-ratio: 1; border-radius: 50%;
+         background: radial-gradient(circle, var(--panel) 0%, var(--panel2) 70%); border: 2px solid var(--borde); touch-action: none; }
+  #pad::before, #pad::after { content: ""; position: absolute; background: var(--borde); }
+  #pad::before { left: 50%; top: 12%; bottom: 12%; width: 2px; transform: translateX(-1px); }
+  #pad::after { top: 50%; left: 12%; right: 12%; height: 2px; transform: translateY(-1px); }
+  #perilla { position: absolute; left: 50%; top: 50%; width: 38%; aspect-ratio: 1; border-radius: 50%; z-index: 1;
+             transform: translate(-50%, -50%); background: var(--azul); box-shadow: 0 4px 14px #0008; transition: transform .08s; }
+  #pad.on #perilla { transition: none; }
+  #pad.altura { border-color: var(--amarillo); }
+  #pad.altura #perilla { background: var(--amarillo); }
+  .palanca-pie { display: flex; gap: 8px; align-items: center; }
+  #lectura { font-family: var(--mono); font-size: 12px; color: var(--tenue2); min-width: 108px; text-align: center; }
+
+  .tecla { border: none; border-radius: 14px; background: var(--panel); color: var(--texto); font-size: 15px; font-weight: 700;
+           touch-action: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center;
+           line-height: 1.1; position: relative; overflow: hidden; }
+  .tecla small { font-size: 10.5px; font-weight: 500; opacity: .75; margin-top: 2px; }
+  .tecla.on { background: var(--azul); color: #0E1A2E; }
+  #gatillo { width: min(78vw, 330px); height: 76px; border-radius: 18px; font-size: 20px; background: #4A2420; color: var(--rojoT); }
+  #gatillo.on { background: var(--rojo); color: #0E1A2E; }
+  .acciones { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: min(78vw, 330px); }
+  .acciones .tecla { height: 58px; }
+  #b-acercar { background: #1E4A30; color: #9BE7B2; } #b-acercar.on { background: var(--verde); color: #0E1A2E; }
+  #b-ok { background: #23406A; color: #A9D4FF; }
+  .extra { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: min(78vw, 330px); }
+  .extra .tecla { height: 44px; font-size: 12.5px; border-radius: 12px; }
+  #b-altura.activo { background: var(--amarillo); color: #0E1A2E; }
+  #b-borrar { color: var(--rojoT); }
+  .tecla .carga { position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: var(--rojo); }
+  .tecla.cargando .carga { width: 100%; transition: width .9s linear; }
+
+  /* Horizontal: palanca a la izquierda, gatillo y acciones a la derecha */
+  @media (orientation: landscape) {
+    .zona { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto;
+            grid-template-areas: "palanca principal" "palanca extra"; }
+    #pad { width: min(40vw, 62vh, 260px); }
+    #gatillo { width: min(42vw, 330px); height: 64px; }
+    .acciones, .extra { width: min(42vw, 330px); }
+    .acciones .tecla { height: 50px; }
+    .extra .tecla { height: 40px; }
+  }
+
+  #ayuda { position: fixed; inset: 0; z-index: 5; background: #0B1222EE; display: none; overflow-y: auto; padding: 18px; touch-action: pan-y; }
+  #ayuda.visible { display: block; }
+  #ayuda h2 { margin: 0 0 8px; font-size: 18px; }
+  #ayuda table { border-collapse: collapse; font-size: 13.5px; width: 100%; max-width: 640px; }
+  #ayuda td { border-bottom: 1px solid var(--borde); padding: 6px 4px; vertical-align: top; }
+  #ayuda td:first-child { font-weight: 700; white-space: nowrap; color: var(--azul); padding-right: 10px; }
+  #ayuda p { font-size: 13px; color: var(--tenue); max-width: 640px; }
+</style>
+</head>
+<body>
+<div class="cab">
+  <div>
+    <div class="marca">FrankaVR · Mando celular</div>
+    <div class="conexion mal" id="con"><span class="punto"></span><span id="con-txt">Conectando…</span></div>
+  </div>
+  <div style="display:flex; gap:6px">
+    <button type="button" class="etiqueta" id="b-pantalla">Pantalla completa</button>
+    <button type="button" class="etiqueta" id="b-ayuda">?</button>
+  </div>
+</div>
+<div id="aviso" role="status"></div>
+
+<div class="zona">
+  <div class="grupo g-palanca"><span class="grupo-nombre" id="palanca-nombre">Mover torcha</span>
+    <div id="pad" aria-label="Palanca"><div id="perilla"></div></div>
+    <div class="palanca-pie"><span id="lectura">x 0.00 · y 0.00</span></div>
+  </div>
+
+  <div class="grupo g-principal">
+    <button class="tecla" type="button" id="gatillo" data-nivel="gatillo">GATILLO<small>mantener: grabar</small></button>
+    <div class="acciones">
+      <button class="tecla" type="button" id="b-acercar" data-pulso="acercar">ACERCAR<small>ir al inicio</small></button>
+      <button class="tecla" type="button" id="b-retirar" data-pulso="retirar">RETIRAR<small>alejar / abortar</small></button>
+      <button class="tecla" type="button" id="b-ok" data-pulso="ok">OK<small>elegir / ejecutar</small></button>
+      <button class="tecla" type="button" id="b-deshacer" data-pulso="deshacer">DESHACER<small>último tramo</small></button>
+    </div>
+  </div>
+
+  <div class="grupo g-extra">
+    <div class="extra">
+      <button class="tecla" type="button" id="b-altura">ALTURA<small>palanca ↕</small></button>
+      <button class="tecla" type="button" id="b-vista" data-pulso="vista">VISTA</button>
+      <button class="tecla" type="button" id="b-calibrar" data-pulso="calibrar">RECENTRAR</button>
+      <button class="tecla" type="button" id="b-borrar" data-largo="borrar">BORRAR<small>mantener</small><span class="carga"></span></button>
+    </div>
+  </div>
+</div>
+
+<div id="ayuda" role="dialog" aria-label="Ayuda">
+  <h2>Mando celular de FrankaVR</h2>
+  <table>
+    <tr><td>Palanca</td><td>Mueve la torcha (derecha y adelante según la vista). Grabando: avanza sobre la junta, más palanca = más rápido. En MOVERSE: camina.</td></tr>
+    <tr><td>ALTURA</td><td>Activado (amarillo): la palanca arriba/abajo sube y baja la torcha (grabando: distancia a la pieza).</td></tr>
+    <tr><td>GATILLO</td><td>Mantener para grabar la trayectoria (como Espacio). Al soltar se corta.</td></tr>
+    <tr><td>ACERCAR</td><td>La torcha va sola al inicio de la junta.</td></tr>
+    <tr><td>RETIRAR</td><td>Aleja la torcha de la pieza; durante la ejecución, aborta.</td></tr>
+    <tr><td>OK</td><td>Activa el botón que se está mirando con los lentes; si no se mira ninguno y hay trayectoria, ejecuta el programa.</td></tr>
+    <tr><td>DESHACER</td><td>Borra el último tramo grabado.</td></tr>
+    <tr><td>BORRAR</td><td>Mantener 1 s: borra toda la trayectoria.</td></tr>
+    <tr><td>VISTA</td><td>Cambia el punto de vista.</td></tr>
+    <tr><td>RECENTRAR</td><td>Recentra la vista del Cardboard hacia donde mira el operario.</td></tr>
+  </table>
+  <p>Este celular y el de los lentes tienen que estar en la misma red Wi-Fi (o uno compartiendo internet al otro). Si se cierra o apaga esta página, el robot suelta el gatillo y se queda quieto en 0,35 s.</p>
+  <button type="button" class="etiqueta" id="b-cerrar-ayuda">Cerrar</button>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const PERIODO_MS = 40;        // ~25 envíos por segundo (la app suelta todo tras 0,35 s sin datos)
+const ESPERA_MS = 1500;       // un envío colgado (Wi-Fi inestable) no frena los siguientes
+const SIN_PC_MS = 2000;
+const PULSO_MS = 180;         // como el firmware del ESP32: cada acción se mantiene ~150 ms
+const LARGO_MS = 900;         // BORRAR: mantener apretado
+
+const M = { x: 0, y: 0, gatillo: false, altura: false, pulsos: {}, enviando: false, ultimoOk: 0, ultimoEnvio: 0, motivo: "" };
+
+function vibrar(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+// ---------- Línea CTL (idéntica a FrankaVR_Mando.ino) ----------
+function pulso(nombre) {
+  const p = M.pulsos[nombre];
+  if (!p) return 0;
+  // Se mantiene PULSO_MS y al menos 2 envíos, para que un paquete perdido no la borre.
+  if (Date.now() - p.desde < PULSO_MS || p.envios < 2) { p.envios++; return 1; }
+  delete M.pulsos[nombre];
+  return 0;
+}
+function lineaCTL() {
+  const f = (v) => (Math.round(v * 100) / 100).toFixed(2);
+  const campos = [f(M.x), f(M.y), M.gatillo ? 1 : 0, pulso("acercar"), pulso("retirar"), pulso("ok"), pulso("deshacer"),
+                  pulso("borrar"), M.altura ? 1 : 0, pulso("calibrar"), pulso("vista"), 0, "1.0000", "0.0000", "0.0000", "0.0000"];
+  return "CTL," + campos.join(",");
+}
+
+async function enviar() {
+  if (M.enviando) return;
+  M.enviando = true; M.ultimoEnvio = Date.now();
+  const corte = new AbortController();
+  const reloj = setTimeout(() => corte.abort(), ESPERA_MS);
+  try {
+    const r = await fetch("/mando", { method: "POST", headers: { "Content-Type": "text/plain" }, body: lineaCTL(), signal: corte.signal, cache: "no-store" });
+    const d = await r.json();
+    M.ultimoOk = Date.now();
+    M.motivo = d.ok ? "" : (d.motivo || "rechazado");
+    M.estado = d.estado || "";
+  } catch (e) { /* se reintenta en el próximo envío */ }
+  clearTimeout(reloj);
+  M.enviando = false;
+  pintarConexion();
+}
+
+function pintarConexion() {
+  const ok = M.ultimoOk > 0 && Date.now() - M.ultimoOk < SIN_PC_MS;
+  $("con").className = "conexion " + (ok && !M.motivo ? "ok" : "mal");
+  $("con-txt").textContent = !ok ? (M.ultimoOk ? "Sin respuesta de la app · revisá el Wi-Fi" : "Conectando…")
+                           : M.motivo ? "Rechazado: " + M.motivo
+                           : "Conectado" + (M.estado ? " · " + M.estado : "");
+}
+
+setInterval(() => { if (Date.now() - M.ultimoEnvio >= PERIODO_MS) enviar(); pintarConexion(); }, 20);
+
+// ---------- Palanca analógica ----------
+const pad = $("pad"), perilla = $("perilla");
+let dedoPad = null;
+function moverPerilla(cx, cy) {
+  const r = pad.getBoundingClientRect();
+  const radio = r.width / 2;
+  let dx = (cx - (r.left + radio)) / (radio * 0.8);
+  let dy = (cy - (r.top + radio)) / (radio * 0.8);
+  const m = Math.hypot(dx, dy);
+  if (m > 1) { dx /= m; dy /= m; }
+  M.x = dx; M.y = -dy;   // adelante (arriba en la pantalla) es positivo
+  perilla.style.transform = `translate(calc(-50% + ${dx * radio * 0.8}px), calc(-50% + ${dy * radio * 0.8}px))`;
+  $("lectura").textContent = `x ${M.x.toFixed(2)} · y ${M.y.toFixed(2)}`;
+}
+function soltarPerilla() {
+  dedoPad = null; M.x = 0; M.y = 0;
+  pad.classList.remove("on");
+  perilla.style.transform = "translate(-50%, -50%)";
+  $("lectura").textContent = "x 0.00 · y 0.00";
+  enviar();
+}
+pad.addEventListener("pointerdown", (ev) => {
+  ev.preventDefault();
+  if (dedoPad !== null) return;
+  dedoPad = ev.pointerId;
+  try { pad.setPointerCapture(ev.pointerId); } catch (e) {}
+  pad.classList.add("on");
+  moverPerilla(ev.clientX, ev.clientY);
+  enviar();
+});
+pad.addEventListener("pointermove", (ev) => { if (ev.pointerId === dedoPad) { ev.preventDefault(); moverPerilla(ev.clientX, ev.clientY); } });
+for (const tipo of ["pointerup", "pointercancel", "lostpointercapture"])
+  pad.addEventListener(tipo, (ev) => { if (ev.pointerId === dedoPad) soltarPerilla(); });
+
+// ---------- Botones ----------
+function boton(t, alApretar, alSoltar) {
+  const apretar = (ev) => {
+    ev.preventDefault();
+    if (t._dedo !== undefined && t._dedo !== null) return;
+    t._dedo = ev.pointerId;
+    try { t.setPointerCapture(ev.pointerId); } catch (e) {}
+    t.classList.add("on"); vibrar(12);
+    alApretar();
+    enviar();
+  };
+  const soltar = (ev) => {
+    if (ev.pointerId !== t._dedo) return;
+    ev.preventDefault();
+    t._dedo = null; t.classList.remove("on");
+    if (alSoltar) alSoltar();
+    enviar();
+  };
+  t.addEventListener("pointerdown", apretar);
+  t.addEventListener("pointerup", soltar);
+  t.addEventListener("pointercancel", soltar);
+  t.addEventListener("lostpointercapture", soltar);
+  t.addEventListener("contextmenu", (ev) => ev.preventDefault());
+}
+boton($("gatillo"), () => { M.gatillo = true; }, () => { M.gatillo = false; });
+document.querySelectorAll("[data-pulso]").forEach((t) => boton(t, () => { M.pulsos[t.dataset.pulso] = { desde: Date.now(), envios: 0 }; }));
+document.querySelectorAll("[data-largo]").forEach((t) => {
+  let reloj = null;
+  boton(t, () => {
+    t.classList.add("cargando");
+    reloj = setTimeout(() => { M.pulsos[t.dataset.largo] = { desde: Date.now(), envios: 0 }; vibrar([30, 40, 30]); t.classList.remove("cargando"); }, LARGO_MS);
+  }, () => { clearTimeout(reloj); t.classList.remove("cargando"); });
+});
+$("b-altura").addEventListener("pointerdown", (ev) => {
+  ev.preventDefault();
+  M.altura = !M.altura; vibrar(12);
+  $("b-altura").classList.toggle("activo", M.altura);
+  pad.classList.toggle("altura", M.altura);
+  $("palanca-nombre").textContent = M.altura ? "Subir / bajar torcha" : "Mover torcha";
+  enviar();
+});
+
+// Si la página pasa a segundo plano: soltar todo (la app además corta a los 0,35 s).
+function soltarTodo() {
+  M.gatillo = false; M.x = 0; M.y = 0; M.pulsos = {};
+  document.querySelectorAll(".tecla.on").forEach((t) => { t.classList.remove("on"); t._dedo = null; });
+  soltarPerilla();
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) soltarTodo(); });
+window.addEventListener("blur", soltarTodo);
+
+// ---------- Pantalla completa y ayuda ----------
+$("b-pantalla").addEventListener("click", async () => {
+  try {
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+      if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape").catch(() => {});
+    } else await document.exitFullscreen();
+  } catch (e) { $("aviso").textContent = "Este navegador no permite pantalla completa."; }
+});
+$("b-ayuda").addEventListener("click", () => $("ayuda").classList.add("visible"));
+$("b-cerrar-ayuda").addEventListener("click", () => $("ayuda").classList.remove("visible"));
+document.addEventListener("gesturestart", (ev) => ev.preventDefault());
+</script>
+</body>
+</html>
