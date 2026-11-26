@@ -16,6 +16,9 @@ namespace FrankaVR.V6_2
         public bool CleanupOnAwake = true;
         public bool KeepWatchingForLegacyRuntimeObjects = true;
         public float RescanInterval = 1.5f;
+        [Tooltip("Los objetos legacy aparecen al arrancar: vigilar solo estos segundos. Cada barrido recorre " +
+                 "todos los objetos de la escena y en el celular generaba un tiron periodico.")]
+        public float WatchSeconds = 12f;
 
         [Header("Diagnostico")]
         public bool LogWhatWasDisabled = false;
@@ -57,6 +60,7 @@ namespace FrankaVR.V6_2
         void Update()
         {
             if (!KeepWatchingForLegacyRuntimeObjects || !Application.isPlaying) return;
+            if (Time.timeSinceLevelLoad > WatchSeconds) return;
             if (Time.unscaledTime < _nextScan) return;
             _nextScan = Time.unscaledTime + Mathf.Max(0.25f, RescanInterval);
             CleanupNow(false);
@@ -84,18 +88,15 @@ namespace FrankaVR.V6_2
                 }
             }
 
-            foreach (string objectName in LegacyRuntimeObjectNames)
+            // Un solo recorrido de la escena para todos los nombres (antes era uno por nombre).
+            foreach (GameObject go in FindSceneObjectsByName(LegacyRuntimeObjectNameSet))
             {
-                GameObject[] gos = FindSceneObjectsByName(objectName);
-                foreach (GameObject go in gos)
-                {
-                    if (go == null || !go.activeSelf) continue;
-                    // Nunca apagar objetos nuevos V6/V6.2 por coincidencia accidental.
-                    if (go.name.IndexOf("V6", StringComparison.OrdinalIgnoreCase) >= 0) continue;
-                    go.SetActive(false);
-                    count++;
-                    if (log) Debug.Log("[UI Cleanup V6.2] Ocultado objeto legacy: " + go.name);
-                }
+                if (go == null || !go.activeSelf) continue;
+                // Nunca apagar objetos nuevos V6/V6.2 por coincidencia accidental.
+                if (go.name.IndexOf("V6", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                go.SetActive(false);
+                count++;
+                if (log) Debug.Log("[UI Cleanup V6.2] Ocultado objeto legacy: " + go.name);
             }
 
             return count;
@@ -128,7 +129,9 @@ namespace FrankaVR.V6_2
 #endif
         }
 
-        static GameObject[] FindSceneObjectsByName(string name)
+        static readonly HashSet<string> LegacyRuntimeObjectNameSet = new HashSet<string>(LegacyRuntimeObjectNames, StringComparer.Ordinal);
+
+        static GameObject[] FindSceneObjectsByName(HashSet<string> names)
         {
             List<GameObject> result = new List<GameObject>();
 #if UNITY_2023_1_OR_NEWER
@@ -139,7 +142,7 @@ namespace FrankaVR.V6_2
             foreach (GameObject go in all)
             {
                 if (go == null || !go.scene.IsValid()) continue;
-                if (string.Equals(go.name, name, StringComparison.Ordinal)) result.Add(go);
+                if (names.Contains(go.name)) result.Add(go);
             }
             return result.ToArray();
         }

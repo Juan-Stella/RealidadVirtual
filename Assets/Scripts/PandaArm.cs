@@ -20,6 +20,11 @@ public class PandaArm : MonoBehaviour
     public float damping = 1000f;
     public float forceLimit = 1000f;
 
+    [Header("Compensacion")]
+    [Tooltip("El Panda real compensa la gravedad en su propio controlador. Sin esto el drive " +
+             "(resorte) cede unos milimetros con el peso y la IK lo corrige a los tirones.")]
+    public bool gravityCompensation = true;
+
     // Limites del Panda en grados (verificados contra joint_limits.yaml de franka_description).
     public static readonly Vector2[] Limits =
     {
@@ -39,17 +44,33 @@ public class PandaArm : MonoBehaviour
 
     void Start()
     {
+        if (gravityCompensation)
+            foreach (ArticulationBody body in GetComponentsInChildren<ArticulationBody>(true))
+                body.useGravity = false;
         for (int i = 0; i < N; i++) target[i] = home[i];
         ApplyTargets();
     }
 
     /// <summary>Fija el target absoluto de la junta i (grados), respetando limites.</summary>
-    public void SetTargetDeg(int i, float deg)
+    public void SetTargetDeg(int i, float deg) => SetTargetDeg(i, deg, 0f);
+
+    /// <summary>
+    /// Target de la junta i (grados) que ademas se esta moviendo a velocityDegPerSec.
+    /// El drive es resorte + amortiguador con velocidad objetivo cero: para avanzar a v el
+    /// amortiguador pide un adelanto de damping/stiffness * v. Se suma ese adelanto al
+    /// target del drive (no al target interno) y el brazo sigue la referencia sin quedar
+    /// atrasado ni pasarse al frenar. Todo en grados: sin ambiguedad de unidades.
+    /// </summary>
+    public void SetTargetDeg(int i, float deg, float velocityDegPerSec)
     {
         if (!Valid(i)) return;
         target[i] = Mathf.Clamp(deg, Limits[i].x, Limits[i].y);
-        SetDrive(i, target[i]);
+        float lead = stiffness > 0f ? velocityDegPerSec * damping / stiffness : 0f;
+        SetDrive(i, Mathf.Clamp(target[i] + lead, Limits[i].x, Limits[i].y));
     }
+
+    /// <summary>Quita el adelanto de velocidad: el drive vuelve exactamente al target.</summary>
+    public void ClearVelocityLead() => ApplyTargets();
 
     /// <summary>Suma delta (grados) al target de la junta i.</summary>
     public void Nudge(int i, float deltaDeg) => SetTargetDeg(i, target[i] + deltaDeg);

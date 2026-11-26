@@ -18,8 +18,9 @@ public static class FrankaVRProjectChecks
     const string SceneryKey = "FrankaVR.ProjectChecks.SceneryOnly";
     const string SeamKey = "FrankaVR.ProjectChecks.SeamOnly";
     const string HandKey = "FrankaVR.ProjectChecks.HandControllerOnly";
+    const string SmoothKey = "FrankaVR.ProjectChecks.SmoothnessOnly";
     static IEnumerator _steps;
-    static bool _handRun;
+    static bool _handRun, _smoothRun;
     static int _lastFrame = -1;
     static double _deadline;
 
@@ -65,6 +66,118 @@ public static class FrankaVRProjectChecks
         UnityEditor.SessionState.SetBool(RunningKey, true);
         Subscribe();
         EditorApplication.EnterPlaymode();
+    }
+
+    // Mide arranque/frenado y giro con el servo anterior y con el nuevo (misma escena, mismas ordenes).
+    [MenuItem("FrankaVR/Verificacion/Suavidad del movimiento")]
+    public static void RunSmoothnessBatch()
+    {
+        EditorSceneManager.OpenScene("Assets/Main.unity", OpenSceneMode.Single);
+        UnityEditor.SessionState.SetBool(ControlKey, false);
+        UnityEditor.SessionState.SetBool(SceneryKey, false);
+        UnityEditor.SessionState.SetBool(SeamKey, false);
+        UnityEditor.SessionState.SetBool(HandKey, false);
+        UnityEditor.SessionState.SetBool(SmoothKey, true);
+        UnityEditor.SessionState.SetBool(RunningKey, true);
+        Subscribe();
+        EditorApplication.EnterPlaymode();
+    }
+
+    static IEnumerator SmoothnessAudit()
+    {
+        float until = Time.unscaledTime + 5f;
+        while (Time.unscaledTime < until) yield return null;
+        var course = One<CourseTrainingManagerV5>();
+        var task = One<WeldingTaskManager>();
+        var teleop = One<WeldingTeleopController>();
+        var torch = One<WeldingTorch>();
+        var ik = teleop.Ik;
+        var arm = ik.GetComponent<PandaArm>();
+        teleop.enabled = false;
+        course.BackToMenu(); course.SelectExercise(0); course.StartTraining();
+        for (int i = 0; i < 3; i++) yield return null;
+        var report = new System.Text.StringBuilder();
+        var csv = new System.Text.StringBuilder("modo,t,x_mm,y_mm,z_mm,eje_grados\n");
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        ArticulationBody[] bodies = arm.GetComponentsInChildren<ArticulationBody>(true);
+        float fixedNew = Time.fixedDeltaTime;
+        for (int mode = 0; mode < 2; mode++)
+        {
+            bool smooth = mode == 1;
+            string label = smooth ? "nuevo" : "anterior";
+            ik.smoothServo = smooth;
+            var driver = UnityEngine.Object.FindAnyObjectByType<FramePhysicsDriver>();
+            if (driver != null) driver.enabled = smooth; // anterior: paso fijo de 50 Hz
+            Time.fixedDeltaTime = smooth ? fixedNew : 0.02f;
+            foreach (ArticulationBody b in bodies) b.useGravity = !smooth;
+            teleop.ReferenceRelative = false;
+            Vector3 start = task.Seam.PointAt(0) + Vector3.up * 0.12f + Vector3.back * 0.06f;
+            teleop.ResetTo(start);
+            var command = TeleopCommand.Neutral;
+            command.MoveClutch = true;
+            until = Time.unscaledTime + 3f;
+            while (Time.unscaledTime < until) { teleop.ApplyMotion(command, true, Time.deltaTime); yield return null; }
+
+            // 1) Avanzar 1 s a velocidad de crucero (como mantener una tecla) y soltar.
+            Vector3 dir = Vector3.forward;
+            float t0 = Time.unscaledTime, release = t0 + 1.0f, end = t0 + 3.0f;
+            Vector3 p0 = torch.ArcOriginPosition, last = p0;
+            float lastT = t0, peak = float.NegativeInfinity, finalAlong = 0f, cruiseSum = 0f, cruiseSq = 0f;
+            int cruiseN = 0, reversals = 0, lastSign = 0;
+            var samples = new System.Collections.Generic.List<Vector2>();
+            while (Time.unscaledTime < end)
+            {
+                command.TranslationRate = Time.unscaledTime < release ? dir * 0.5f : Vector3.zero;
+                teleop.ApplyMotion(command, true, Time.deltaTime);
+                yield return null;
+                Vector3 p = torch.ArcOriginPosition;
+                float t = Time.unscaledTime, dt = Mathf.Max(1e-4f, t - lastT);
+                float v = Vector3.Dot(p - last, dir) / dt;
+                float along = Vector3.Dot(p - p0, dir);
+                samples.Add(new Vector2(t - t0, along));
+                if (t > t0 + 0.6f && t < release) { cruiseSum += v; cruiseSq += v * v; cruiseN++; }
+                if (t > release)
+                {
+                    peak = Mathf.Max(peak, along);
+                    int sign = v > 0.002f ? 1 : v < -0.002f ? -1 : 0;
+                    if (sign != 0 && lastSign != 0 && sign != lastSign) reversals++;
+                    if (sign != 0) lastSign = sign;
+                }
+                csv.AppendFormat(inv, "{0},{1:0.000},{2:0.0},{3:0.0},{4:0.0},{5:0.0}\n", label, t - t0,
+                    (p.x - p0.x) * 1000f, (p.y - p0.y) * 1000f, (p.z - p0.z) * 1000f, Vector3.Angle(torch.PointingDir, Vector3.down));
+                last = p; lastT = t; finalAlong = along;
+            }
+            float settle = 0f;
+            foreach (Vector2 s in samples) if (s.x > 1.0f && Mathf.Abs(s.y - finalAlong) > 0.001f) settle = s.x - 1.0f;
+            float mean = cruiseN > 0 ? cruiseSum / cruiseN : 0f;
+            float sd = cruiseN > 1 ? Mathf.Sqrt(Mathf.Max(0f, cruiseSq / cruiseN - mean * mean)) : 0f;
+
+            // 2) Girar la torcha 20 grados (como mantener I) y soltar: cuanto se pasa el eje.
+            command.TranslationRate = Vector3.zero;
+            Vector3 axis0 = torch.PointingDir;
+            Quaternion tilt = Quaternion.AngleAxis(20f, Vector3.right);
+            float tiltStart = Time.unscaledTime, maxAngle = 0f, angle = 0f;
+            while (Time.unscaledTime < tiltStart + 2.0f)
+            {
+                float k = Mathf.Clamp01((Time.unscaledTime - tiltStart) / 0.7f);
+                command.Orientation = Quaternion.Slerp(Quaternion.identity, tilt, k);
+                teleop.ApplyMotion(command, true, Time.deltaTime);
+                yield return null;
+                angle = Vector3.Angle(axis0, torch.PointingDir);
+                maxAngle = Mathf.Max(maxAngle, angle);
+            }
+            report.AppendFormat(inv, "{0}: crucero {1:0} mm/s (desvio entre cuadros {2:0.0}), sobrepaso al frenar {3:0.0} mm, rebotes {4}, quieto en {5:0.00} s, giro 20 -> max {6:0.0} final {7:0.0} grados\n",
+                label, mean * 1000f, sd * 1000f, (peak - finalAlong) * 1000f, reversals, settle, maxAngle, angle);
+            command.Orientation = Quaternion.identity;
+        }
+        Time.fixedDeltaTime = fixedNew;
+        var frameDriver = UnityEngine.Object.FindAnyObjectByType<FramePhysicsDriver>();
+        if (frameDriver != null) frameDriver.enabled = true;
+        foreach (ArticulationBody b in bodies) b.useGravity = !arm.gravityCompensation;
+        ik.smoothServo = true;
+        File.WriteAllText("Verificacion/Suavidad.txt", report.ToString());
+        File.WriteAllText("Verificacion/Suavidad.csv", csv.ToString());
+        Debug.Log("[Suavidad] " + report);
     }
 
     // Mando ESP32 simulado: paquetes CTL con el formato del firmware por UDP a 127.0.0.1.
@@ -142,10 +255,11 @@ public static class FrankaVRProjectChecks
             bool sceneryOnly = UnityEditor.SessionState.GetBool(SceneryKey, false);
             bool seamOnly = UnityEditor.SessionState.GetBool(SeamKey, false);
             bool handOnly = UnityEditor.SessionState.GetBool(HandKey, false);
-            if (_steps == null) _handRun = handOnly;
+            if (_steps == null) { _handRun = handOnly; _smoothRun = UnityEditor.SessionState.GetBool(SmoothKey, false); UnityEditor.SessionState.SetBool(SmoothKey, false); }
             handOnly = _handRun;
+            if (_steps == null && _smoothRun) _steps = SmoothnessAudit();
             if (_steps == null) _steps = handOnly ? HandControllerSmoke() : seamOnly ? SeamSmoke() : sceneryOnly ? ScenerySmoke() : controlOnly ? ControlSmoke() : Smoke();
-            if (!_steps.MoveNext()) Complete(true, handOnly ? "Mando Wi-Fi: conexion, palanca, altura, IMU, acercar, ensenar, deshacer, borrar, OK/ejecutar, retirar y timeout verificados." : seamOnly ? "M1 ensenado con teclas y ejecutado por el robot." : sceneryOnly ? "Capturas del entorno generadas." : controlOnly ? "Control de punta N1: aproximacion, avance, arco, orientacion, superficies y exclusion de examen verificados." :
+            if (!_steps.MoveNext()) Complete(true, _smoothRun ? File.ReadAllText("Verificacion/Suavidad.txt") : handOnly ? "Mando Wi-Fi: conexion, palanca, altura, IMU, acercar, ensenar, deshacer, borrar, OK/ejecutar, retirar y timeout verificados." : seamOnly ? "M1 ensenado con teclas y ejecutado por el robot." : sceneryOnly ? "Capturas del entorno generadas." : controlOnly ? "Control de punta N1: aproximacion, avance, arco, orientacion, superficies y exclusion de examen verificados." :
                 "Referencias, curso N1-N5, superficies, CSV, timeouts, cierre, deposicion y control de punta N1 verificados.");
         }
         catch (Exception ex) { Complete(false, ex.ToString()); }
@@ -290,13 +404,18 @@ public static class FrankaVRProjectChecks
         course.StartTraining();
         for (int i = 0; i < 3; i++) yield return null;
         Require(task.State == FrankaVR.Welding.SessionState.Running && GameObject.Find("SeamPathGuide").GetComponent<LineRenderer>().enabled, "La practica no muestra su guia");
-        var hud = One<VRTrainingHUDV6>();
-        hud.ShowHelpDuringRunning = true;
+        var menu = One<CourseWorldMenuV6>();
+        menu.SetControlsOpen(true);
         for (int i = 0; i < 3; i++) yield return null;
-        Require(GameObject.Find("CourseWorldMenuV6_Runtime") != null, "La ayuda no aparece durante practica");
+        GameObject controls = GameObject.Find("ControlesV6_Runtime");
+        Require(controls != null && controls.activeInHierarchy && GameObject.Find("VRTrainingHUDV6_Runtime") == null,
+            "El documento de CONTROLES no aparece (o el HUD queda encima)");
         CheckPanels();
-        Capture("06_ayuda");
-        hud.ShowHelpDuringRunning = false;
+        Capture("06_controles");
+        menu.SetControlsOpen(false);
+        for (int i = 0; i < 3; i++) yield return null;
+        Require(GameObject.Find("ControlesV6_Runtime") == null && GameObject.Find("VRTrainingHUDV6_Runtime") != null,
+            "CERRAR no oculta el documento de CONTROLES");
 
         IEnumerator reachAudit = AuditReach(course, task, teleop, torch);
         while (reachAudit.MoveNext()) yield return reachAudit.Current;
@@ -599,6 +718,15 @@ public static class FrankaVRProjectChecks
         camera.transform.SetPositionAndRotation(cameraPosition, cameraRotation);
     }
 
+    static string CellMap(WeldSeam seam)
+    {
+        WeldingHeatModel.Thresholds(seam.ThicknessMm, out float coldMax, out float burnMin);
+        var b = new System.Text.StringBuilder();
+        for (int i = 0; i < seam.Count; i++)
+            b.Append(seam.QualityAt(i).ToString()[0]).Append((seam.Get(i).Energy / coldMax).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)).Append(' ');
+        return b.ToString();
+    }
+
     // Flujo completo del primer trabajo: ENSENAR la trayectoria con gatillo + la tecla de avance
     // (sin arco) y EJECUTARLA con el robot, que suelda solo a la velocidad programada.
     static IEnumerator AuditFullSeam(CourseTrainingManagerV5 course, WeldingTaskManager task,
@@ -671,14 +799,25 @@ public static class FrankaVRProjectChecks
         until = Time.unscaledTime + 90f;
         captureAt = Time.unscaledTime + 12f;
         int frames = 0, arcing = 0;
+        var exec = new System.Text.StringBuilder("t,along_mm,lateral_mm,arc_mm,estado,progreso,ik_err_mm\r\n");
+        t0Time = Time.unscaledTime; logAt = 0f;
         while (course.Phase == CoursePhaseV5.Running && Time.unscaledTime < until)
         {
             frames++;
             if (torch.Arcing) arcing++;
+            if (Time.unscaledTime >= logAt)
+            {
+                logAt = Time.unscaledTime + 0.1f;
+                Vector3 rel = torch.ArcOriginPosition - start, nrm = task.Seam.NormalAt(0);
+                exec.AppendFormat(inv, "{0:0.00},{1:0.0},{2:0.0},{3:0.0},{4},{5:0.000},{6:0.0}\r\n", Time.unscaledTime - t0Time,
+                    Vector3.Dot(rel, t0) * 1000f, Vector3.Dot(rel, Vector3.Cross(nrm, t0).normalized) * 1000f, torch.ArcLenMm, torch.State,
+                    teleop.PlaybackProgress, teleop.Ik.ErrorMeters * 1000f);
+            }
             if (Time.unscaledTime > captureAt) { Capture("16_ejecutando"); captureAt = float.PositiveInfinity; }
             yield return null;
         }
         teleop.enabled = false;
+        File.WriteAllText("Verificacion/Ejecucion_diagnostico.csv", exec.ToString());
         Require(course.Phase == CoursePhaseV5.Results, "La ejecucion no termino: progreso " + (teleop.PlaybackProgress * 100f).ToString("0") + "% " + teleop.AssistMessage);
         task.Seam.Tally(out int good, out int cold, out int burn, out int undercut, out int porosity, out int untouched);
         float goodPct = 100f * good / Mathf.Max(1, task.Seam.Count);
@@ -686,7 +825,7 @@ public static class FrankaVRProjectChecks
             " perforacion=" + burn + " socavado=" + undercut + " porosidad=" + porosity + " sin_soldar=" + untouched +
             " arco_ejecucion=" + (100f * arcing / Mathf.Max(1, frames)).ToString("0") + "% puntos_ensenados=" + recorder.Count +
             " cobertura=" + recorder.CoveragePercent.ToString("0") + "% calidad_ensenada=" + recorder.QualityPercent.ToString("0") +
-            "% colisiones=" + recorder.CollisionSamples + " nota=" + task.FinalScore.ToString("0"));
+            "% colisiones=" + recorder.CollisionSamples + " nota=" + task.FinalScore.ToString("0") + "\r\nceldas=" + CellMap(task.Seam));
         Capture("17_cordon_ejecutado");
         Require(File.Exists(course.LastDatasetPath) && File.Exists(Path.ChangeExtension(course.LastDatasetPath, ".csv")), "No se exporto la trayectoria");
         Require(goodPct >= 80f, "Cordon ejecutado: solo " + goodPct.ToString("0") + "% correcto");
@@ -927,16 +1066,47 @@ public static class FrankaVRProjectChecks
         foreach (TextMesh text in UnityEngine.Object.FindObjectsByType<TextMesh>())
         {
             string root = text.transform.root.name;
-            if (root != "VRTrainingHUDV6_Runtime" && root != "CourseWorldMenuV6_Runtime") continue;
+            if (root != "VRTrainingHUDV6_Runtime" && root != "CourseWorldMenuV6_Runtime" && root != "ControlesV6_Runtime") continue;
             Vector3 size = text.GetComponent<Renderer>().localBounds.size * text.transform.localScale.x;
-            Require(size.x <= (root.StartsWith("VRTraining") ? 1.18f : 0.90f) + 0.01f, "Texto fuera del panel: " + text.name);
+            float limit = root.StartsWith("VRTraining") ? 1.18f : root.StartsWith("Controles") ? 1.62f : 0.90f;
+            Require(size.x <= limit + 0.01f, "Texto fuera del panel: " + root + "/" + text.name);
         }
     }
 
-    static void Capture(string name)
+    // Primer plano de la torcha en modo edicion: lateral y tres cuartos, sin entrar en Play.
+    [MenuItem("FrankaVR/Verificacion/Captura de la torcha")]
+    public static void CaptureTorch()
+    {
+        WeldingTorch torch = UnityEngine.Object.FindAnyObjectByType<WeldingTorch>();
+        Require(torch != null, "No hay WeldingTorch en la escena");
+        Transform tool = torch.transform;
+        Vector3 flange = tool.TransformPoint(0f, -0.154f, 0f), tip = torch.Tip.position;
+        Vector3 center = (flange + tip) * 0.5f, axis = (tip - flange).normalized;
+        Vector3 side = Vector3.Cross(axis, Vector3.up);
+        if (side.sqrMagnitude < 1e-4f) side = Vector3.right;
+        side.Normalize();
+        var go = new GameObject("CamaraTorcha");
+        try
+        {
+            Camera cam = go.AddComponent<Camera>();
+            cam.fieldOfView = 35f; cam.nearClipPlane = 0.02f;
+            Vector3[] views = { side * 0.62f + Vector3.up * 0.10f, (side + Vector3.Cross(side, Vector3.up)).normalized * 0.75f + Vector3.up * 0.30f };
+            for (int i = 0; i < views.Length; i++)
+            {
+                go.transform.position = center + views[i];
+                go.transform.rotation = Quaternion.LookRotation(center - go.transform.position, Vector3.up);
+                CaptureFrom(cam, "20_torcha_" + i);
+            }
+        }
+        finally { UnityEngine.Object.DestroyImmediate(go); }
+        Debug.Log("[FrankaVR Checks] Capturas de la torcha en Verificacion/Capturas/20_torcha_*.png");
+    }
+
+    static void Capture(string name) => CaptureFrom(Camera.main, name);
+
+    static void CaptureFrom(Camera camera, string name)
     {
         if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) return;
-        Camera camera = Camera.main;
         var target = new RenderTexture(1600, 900, 24);
         var texture = new Texture2D(1600, 900, TextureFormat.RGB24, false);
         RenderTexture previous = RenderTexture.active;

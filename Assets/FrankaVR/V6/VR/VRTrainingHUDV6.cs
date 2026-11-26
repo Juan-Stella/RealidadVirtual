@@ -26,7 +26,7 @@ namespace FrankaVR.V6
         public float HorizontalOffset = 0.60f;
         public float Width = 1.18f;
         public float Height = 0.35f;
-        [Tooltip("Durante la soldadura oculta la linea larga de ayuda para no ensuciar la vista.")]
+        [Tooltip("Compatibilidad: ponerlo en true abre el documento de CONTROLES (CourseWorldMenuV6).")]
         public bool ShowHelpDuringRunning = false;
 
         Transform _root;
@@ -40,10 +40,13 @@ namespace FrankaVR.V6
         WeldPathRecorder _recorder;
         RobotCollisionGuard _collisions;
         WeldingTeleopController _teleop;
+        CourseWorldMenuV6 _menu;
+        OperatorMoveV6 _move;
 
         void Start()
         {
             _teleop = FindAnyObjectByType<WeldingTeleopController>();
+            _menu = FindAnyObjectByType<CourseWorldMenuV6>();
             _recorder = FindAnyObjectByType<WeldPathRecorder>();
             _collisions = FindAnyObjectByType<RobotCollisionGuard>();
             Resolve();
@@ -90,7 +93,9 @@ namespace FrankaVR.V6
             _alertBg = alertBox.GetComponent<Renderer>();
             _alertBg.sortingOrder = -9;
 
-            Shader sh = Shader.Find("Sprites/Default");
+            // Fondo y botones encima de la escena, como el texto: si no, la mesa o el robot los tapan.
+            Shader sh = Resources.Load<Shader>("FrankaVRUIPanel");
+            if (sh == null) sh = Shader.Find("Sprites/Default");
             if (sh != null)
             {
                 _bgMat = new Material(sh); _bgMat.color = new Color(0.02f, 0.03f, 0.045f, 0.80f);
@@ -118,13 +123,17 @@ namespace FrankaVR.V6
             _metrics  = MakeText("Metrics",  new Vector3(0f, 0.035f, -0.004f), 52, 0.0078f, new Color(0.82f, 0.89f, 0.98f), TextAnchor.MiddleCenter);
             _help     = MakeText("Help",     new Vector3(0f, -0.052f, -0.004f), 42, 0.0062f, new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter);
             _alert    = MakeText("Alert",    new Vector3(0f, -0.128f, -0.005f), 58, 0.0082f, new Color(1f, 0.84f, 0.32f), TextAnchor.MiddleCenter);
-            GazeButton.CreateUI(_root, "FIN", new Vector3(-0.42f,-0.21f,-0.014f), 0.18f, () => Course.FinishExercise(), _bgMat);
-            GazeButton.CreateUI(_root, "AYUDA", new Vector3(-0.21f,-0.21f,-0.014f), 0.18f, () => ShowHelpDuringRunning = !ShowHelpDuringRunning, _bgMat);
-            GazeButton.CreateUI(_root, "VISTA", new Vector3(0f,-0.21f,-0.014f), 0.18f, () => Viewpoints.Next(), _bgMat);
-            _pipeBack = GazeButton.CreateUI(_root, "CAÑO -", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(-15f), _bgMat);
-            _pipeForward = GazeButton.CreateUI(_root, "CAÑO +", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.IndexPipe(15f), _bgMat);
-            _clearButton = GazeButton.CreateUI(_root, "BORRAR", new Vector3(0.21f,-0.21f,-0.014f), 0.18f, () => Course.ClearProgram(), _bgMat);
-            _executeButton = GazeButton.CreateUI(_root, "EJECUTAR", new Vector3(0.42f,-0.21f,-0.014f), 0.18f, () => Course.ExecuteProgram(), _bgMat);
+            _move = OperatorMoveV6.Ensure(PlayerCamera, Viewpoints);
+            GazeButton.CreateUI(_root, "FIN", new Vector3(-0.475f,-0.21f,-0.014f), 0.17f, () => Course.FinishExercise(), _bgMat);
+            GazeButton.CreateUI(_root, "CONTROLES", new Vector3(-0.285f,-0.21f,-0.014f), 0.17f, () => { if (_menu != null) _menu.ToggleControls(); }, _bgMat);
+            GazeButton.CreateUI(_root, "VISTA", new Vector3(-0.095f,-0.21f,-0.014f), 0.17f, () => Viewpoints.Next(), _bgMat);
+            GazeButton.CreateUI(_root, "MOVERSE", new Vector3(0.095f,-0.21f,-0.014f), 0.17f, () => _move.Toggle(), _bgMat);
+            _pipeBack = GazeButton.CreateUI(_root, "CAÑO -", new Vector3(0.285f,-0.21f,-0.014f), 0.17f, () => Course.IndexPipe(-15f), _bgMat);
+            _pipeForward = GazeButton.CreateUI(_root, "CAÑO +", new Vector3(0.475f,-0.21f,-0.014f), 0.17f, () => Course.IndexPipe(15f), _bgMat);
+            _clearButton = GazeButton.CreateUI(_root, "BORRAR", new Vector3(0.285f,-0.21f,-0.014f), 0.17f, () => Course.ClearProgram(), _bgMat);
+            _executeButton = GazeButton.CreateUI(_root, "EJECUTAR", new Vector3(0.475f,-0.21f,-0.014f), 0.17f, () => Course.ExecuteProgram(), _bgMat);
+            // Encima de vidrios y brillos del taller (el orden transparente va primero por sortingOrder).
+            foreach (Renderer r in _root.GetComponentsInChildren<Renderer>(true)) r.sortingOrder += 1000;
         }
 
         Transform MakeBar(string name, Vector3 localPos, Vector2 size, Material material, int order)
@@ -178,8 +187,7 @@ namespace FrankaVR.V6
             TextMesh tm = go.AddComponent<TextMesh>();
             tm.anchor = anchor;
             tm.alignment = TextAlignment.Center;
-            tm.fontSize = fontSize;
-            tm.characterSize = charSize;
+            CrispTextV6.Setup(tm, fontSize, charSize);
             tm.color = color;
             go.GetComponent<Renderer>().sortingOrder = 10;
             return tm;
@@ -188,7 +196,10 @@ namespace FrankaVR.V6
         void LateUpdate()
         {
             if (_root == null || PlayerCamera == null) return;
-            if (Input.GetKeyDown(KeyCode.F1)) ShowHelpDuringRunning = !ShowHelpDuringRunning;
+            // Con el documento de controles abierto el HUD se oculta: si no, su texto se ve encima.
+            bool document = _menu != null && _menu.ControlsOpen;
+            if (_root.gameObject.activeSelf == document) _root.gameObject.SetActive(!document);
+            if (document) return;
             Transform cam = PlayerCamera.transform;
             Transform body = Application.platform == RuntimePlatform.Android && cam.parent != null ? cam.parent : cam;
             float scale = Navigator != null ? Navigator.InterfaceScale : 1f;
@@ -201,8 +212,18 @@ namespace FrankaVR.V6
             bool teach = !index && Course != null && Course.Phase == CoursePhaseV5.Running && Course.Stage == CourseStageV5.Teach;
             _clearButton.gameObject.SetActive(teach);
             _executeButton.gameObject.SetActive(teach);
-            UpdateText();
+            // 20 veces por segundo alcanza para leer: armar los textos en cada cuadro generaba
+            // basura constante y, en el celular, tirones periodicos del recolector.
+            if (Time.unscaledTime >= _nextText)
+            {
+                _nextText = Time.unscaledTime + TextIntervalSec;
+                UpdateText();
+            }
         }
+
+        [Tooltip("Cada cuanto se rearman los textos y el indicador de distancia (s).")]
+        public float TextIntervalSec = 0.05f;
+        float _nextText;
 
         void UpdateText()
         {
@@ -233,23 +254,29 @@ namespace FrankaVR.V6
                     "Puntos correctos  " + Task.GoodPoints + "   Sin soldar  " + Task.UntouchedPoints;
             SetText(_metrics, metrics, Width * 0.90f, 0.085f);
 
-            if (running && !ShowHelpDuringRunning && input == "Mando")
+            if (OperatorMoveV6.Active)
+            {
+                SetText(_help, input == "Mando"
+                    ? "MOVERSE · mirá el piso + OK: ir ahí · palanca: caminar · MOVERSE: volver a soldar"
+                    : "MOVERSE · mirá el piso y tocá (clic): ir ahí · WASD: caminar · MOVERSE: volver a soldar", Width * 0.90f, 0.045f);
+            }
+            else if (running && input == "Mando")
             {
                 // Con el mando ESP32 (lentes puestos) se muestran sus botones, no el teclado.
                 if (!teaching) SetText(_help, "El robot repite tu trayectoria con arco · RETIRAR: abortar", Width * 0.90f, 0.045f);
                 else if (_teleop != null && _teleop.SeamLocked) SetText(_help, "GRABANDO · palanca: avanzar (más palanca, más rápido) · apretada: distancia · inclinar el mando: ángulos", Width * 0.90f, 0.045f);
                 else SetText(_help, "ACERCAR: ir al inicio · gatillo: grabar · DESHACER (largo: borrar) · OK: ejecutar o elegir lo que mirás", Width * 0.90f, 0.045f);
             }
-            else if (running && !ShowHelpDuringRunning)
+            else if (running)
             {
                 if (!teaching) SetText(_help, "El robot repite tu trayectoria con arco · C: abortar", Width * 0.90f, 0.045f);
                 else if (_teleop != null && _teleop.SeamLocked) SetText(_help, "GRABANDO · " + _teleop.SeamHelp, Width * 0.90f, 0.045f);
                 else SetText(_help, (Course.Mode == CourseModeV5.Training ? "B: ir al inicio · V: ángulo · " : "") +
-                    "Espacio: grabar · Z: deshacer · R: borrar · Enter: ejecutar · F1: ayuda", Width * 0.90f, 0.045f);
+                    "Espacio: grabar · Z: deshacer · R: borrar · Enter: ejecutar · F1: controles", Width * 0.90f, 0.045f);
             }
             else
             {
-                SetText(_help, "Ctrl: precisión · Rueda: zoom · F1: ayuda\nTab: alambre · [ / ]: corriente · - / +: velocidad · H: careta", Width * 0.90f, 0.060f);
+                SetText(_help, "CONTROLES (o F1): todos los comandos de teclado y mando", Width * 0.90f, 0.045f);
             }
 
             string alert = ComputeAlert();
@@ -264,7 +291,7 @@ namespace FrankaVR.V6
             if (Torch == null) return "";
             if (Course != null && Course.Phase != CoursePhaseV5.Running) return "";
             if (_teleop != null && _teleop.Retracting) return "RETIRANDO HERRAMIENTA — mover para cancelar";
-            if (_teleop != null && _teleop.Approaching) return "ACERCANDO PUNTA — B o mover para cancelar";
+            if (_teleop != null && _teleop.Approaching) return "ACERCANDO PUNTA — B / ACERCAR o mover para cancelar";
             if (_collisions != null && _collisions.Colliding) return _collisions.CollisionLabel;
             if (_teleop != null && !string.IsNullOrEmpty(_teleop.AssistMessage)) return _teleop.AssistMessage;
             if (Course != null && !string.IsNullOrEmpty(Course.ProgramMessage)) return Course.ProgramMessage;

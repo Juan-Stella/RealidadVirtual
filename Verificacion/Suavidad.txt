@@ -1,0 +1,2 @@
+anterior: crucero 151 mm/s (desvio entre cuadros 77.1), sobrepaso al frenar 2.8 mm, rebotes 2, quieto en 0.51 s, giro 20 -> max 21.1 final 20.3 grados
+nuevo: crucero 148 mm/s (desvio entre cuadros 1.8), sobrepaso al frenar 0.0 mm, rebotes 0, quieto en 0.40 s, giro 20 -> max 20.0 final 20.0 grados

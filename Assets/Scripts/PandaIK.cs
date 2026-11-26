@@ -90,6 +90,25 @@ public class PandaIK : MonoBehaviour
              "desvanece sola con la zona muerta suave. Se conserva por compatibilidad.")]
     public float resumeFactor = 2f;
 
+    [Header("Servo suave")]
+    [Tooltip("Control por VELOCIDAD con prealimentacion: la IK sigue la velocidad del objetivo " +
+             "(SetTargetVelocity) y corrige el error restante con ganancias por segundo. " +
+             "El servo anterior sumaba el error completo en cada paso: con el retardo del drive " +
+             "quedaba subamortiguado (rebote al frenar y cambiar de direccion). Apagar = servo anterior.")]
+    public bool smoothServo = true;
+    [Tooltip("Correccion del error de posicion, en 1/s. 6-10 converge sin rebote con el drive actual.")]
+    public float positionGain = 8f;
+    [Tooltip("Correccion del error de orientacion, en 1/s.")]
+    public float orientationGain = 8f;
+    [Tooltip("Velocidad maxima pedida a la punta, en m/s.")]
+    public float maxLinearSpeed = 0.6f;
+    [Tooltip("Velocidad maxima de giro pedida a la herramienta, en grados/s.")]
+    public float maxAngularSpeedDeg = 120f;
+    [Tooltip("La fisica avanza una vez por cuadro dibujado (FramePhysicsDriver): el brazo se mueve " +
+             "lo mismo en cada cuadro. Con el paso fijo, segun el cuadro entraban 0, 1, 2 o 3 pasos " +
+             "de fisica y el movimiento se veia a los saltos.")]
+    public bool physicsPerFrame = true;
+
     [Header("Estado")]
     [Tooltip("Arranca APAGADO a proposito: la IK no debe moverse sola. " +
              "El GamepadDriver la prende al entrar en modo IK. Sin gamepad, " +
@@ -119,6 +138,7 @@ public class PandaIK : MonoBehaviour
     readonly float[,] A = new float[M, M + 1];
     readonly float[] y = new float[M];
     readonly float[] dDeg = new float[PandaArm.N];
+    readonly float[] _col = new float[M];
 
     public float ErrorMeters =>
         (endEffector != null && target != null)
@@ -135,6 +155,17 @@ public class PandaIK : MonoBehaviour
     }
 
     public Vector3 ToolAxisWorld() => endEffector.TransformDirection(localApproach).normalized;
+
+    Vector3 _feedforward;
+    float _feedforwardTime = -1f;
+
+    /// <summary>Velocidad (m/s) con la que se mueve el objetivo. La llama el teleoperador cada
+    /// cuadro; si deja de llamarla, a los 0.1 s se ignora y queda solo la correccion de error.</summary>
+    public void SetTargetVelocity(Vector3 velocity)
+    {
+        _feedforward = velocity;
+        _feedforwardTime = Time.time;
+    }
 
     /// <summary>
     /// Alcanzado dentro de tolerancia. Es solo INFORMATIVO (HUD, gizmos): el servo ya no
@@ -183,18 +214,39 @@ public class PandaIK : MonoBehaviour
     }
 
     bool wasSolving;
+    bool leadActive;
     float graceTimer;
+
+    void Start()
+    {
+        if (physicsPerFrame && FindAnyObjectByType<FramePhysicsDriver>() == null)
+            gameObject.AddComponent<FramePhysicsDriver>();
+    }
 
     void FixedUpdate()
     {
-        if (!solving || endEffector == null || target == null) { wasSolving = solving; return; }
+        if (!FramePhysicsDriver.Active) ServoStep(Time.fixedDeltaTime);
+    }
+
+    /// <summary>Un paso del servo de dt segundos. Lo llama FixedUpdate o, con la fisica por
+    /// cuadro, FramePhysicsDriver justo antes de cada Physics.Simulate.</summary>
+    public void ServoStep(float dt)
+    {
+        if (dt <= 0f) return;
+        if (!solving || endEffector == null || target == null)
+        {
+            // Sin servo, el drive no debe seguir "empujando" con el adelanto de velocidad.
+            if (leadActive) { arm.ClearVelocityLead(); leadActive = false; }
+            wasSolving = solving;
+            return;
+        }
 
         // Periodo de gracia: dejar que el brazo alcance la pose 'home' antes de tomar el
         // control. Sin esto, SyncTargetsToActual congelaba los targets en la pose cruda
         // del URDF y el brazo arrancaba torcido en vez de vertical.
         if (graceTimer < startupGraceSec)
         {
-            graceTimer += Time.fixedDeltaTime;
+            graceTimer += dt;
             wasSolving = false;   // al terminar la gracia cuenta como primera activacion
             return;
         }
@@ -204,12 +256,15 @@ public class PandaIK : MonoBehaviour
         if (!wasSolving) arm.SyncTargetsToActual();
         wasSolving = true;
 
-        Step();
+        Step(dt);
     }
 
-    void Step()
+    void Step(float dt)
     {
         Vector3 ee = endEffector.position;
+        // El servo anterior se calibro a 50 Hz: sus limites "por paso" se escalan para que
+        // a otra frecuencia de fisica se comporte igual por segundo.
+        float stepScale = dt / 0.02f;
 
         // --- Error de posicion, con ZONA MUERTA SUAVE ---
         //
@@ -218,8 +273,17 @@ public class PandaIK : MonoBehaviour
         // limite: llegaba, se apagaba, se asentaba por gravedad, y volvia a encenderse.
         Vector3 ep = target.position - ee;
         float epMag = ep.magnitude;
-        if (epMag <= toleranceMeters) ep = Vector3.zero;
-        else ep = ep.normalized * Mathf.Min(epMag - toleranceMeters, maxStepMeters);
+        if (smoothServo)
+        {
+            // Desplazamiento de este paso = velocidad del objetivo + correccion proporcional.
+            // Con la prealimentacion la punta sigue al objetivo sin necesitar error grande,
+            // asi la ganancia puede ser baja y el brazo frena sin rebotar.
+            Vector3 correction = epMag <= toleranceMeters ? Vector3.zero : ep * ((epMag - toleranceMeters) / epMag);
+            Vector3 feedforward = Time.time - _feedforwardTime < 0.1f ? _feedforward : Vector3.zero;
+            ep = Vector3.ClampMagnitude(feedforward + correction * positionGain, maxLinearSpeed) * dt;
+        }
+        else if (epMag <= toleranceMeters) ep = Vector3.zero;
+        else ep = ep.normalized * Mathf.Min(epMag - toleranceMeters, maxStepMeters * stepScale) * stepScale;
 
         // --- Error de ALINEACION del eje de la pinza ---
         //
@@ -248,13 +312,18 @@ public class PandaIK : MonoBehaviour
 
             // Misma zona muerta suave que en posicion.
             if (ang <= toleranceDegrees) ang = 0f;
-            else ang = Mathf.Min(ang - toleranceDegrees, maxStepDegrees);
+            else if (smoothServo) ang = Mathf.Min((ang - toleranceDegrees) * orientationGain, maxAngularSpeedDeg) * dt;
+            else ang = Mathf.Min(ang - toleranceDegrees, maxStepDegrees * stepScale) * stepScale;
             eo = axis * (ang * Mathf.Deg2Rad);
         }
 
         // Nada que corregir: no se escriben targets (y por lo tanto no hay windup ni
-        // microcorrecciones que exciten el drive).
-        if (ep.sqrMagnitude < 1e-12f && eo.sqrMagnitude < 1e-12f) return;
+        // microcorrecciones que exciten el drive). Si venia moviendose, se frena el adelanto.
+        if (ep.sqrMagnitude < 1e-12f && eo.sqrMagnitude < 1e-12f)
+        {
+            if (leadActive) { arm.ClearVelocityLead(); leadActive = false; }
+            return;
+        }
 
         // --- Jacobiano 6x7 ---
         // lineal:  col_i = axis_i x (p_ee - pivot_i)
@@ -269,7 +338,11 @@ public class PandaIK : MonoBehaviour
         // --- A = J J^T + lambda^2 I  (6x6, simetrica), b = e ---
         BuildSystem(ep, eo * orientationWeight);
 
-        if (!SolveGauss()) return;
+        if (!SolveGauss())
+        {
+            if (leadActive) { arm.ClearVelocityLead(); leadActive = false; }
+            return;
+        }
 
         // --- dTheta_i = col_i . y ---
         for (int i = 0; i < PandaArm.N; i++)
@@ -288,7 +361,7 @@ public class PandaIK : MonoBehaviour
         float ratio = 0f;
         for (int i = 0; i < PandaArm.N; i++)
         {
-            float cap = MaxDegPerSec[i] * speedFactor * Time.fixedDeltaTime;
+            float cap = MaxDegPerSec[i] * speedFactor * dt;
             if (cap > 1e-6f) ratio = Mathf.Max(ratio, Mathf.Abs(dDeg[i]) / cap);
         }
         float scale = (ratio > 1f) ? 1f / ratio : 1f;
@@ -297,7 +370,7 @@ public class PandaIK : MonoBehaviour
         // corrige en el paso siguiente con las demas juntas.
         const int Elbow = 3;
         float elbowExcess = arm.CurrentDeg(Elbow) - elbowKeepBentDeg;
-        if (elbowExcess > 0f) dDeg[Elbow] -= Mathf.Min(elbowBiasDegPerStep, elbowExcess * 0.2f) / Mathf.Max(scale, 1e-3f);
+        if (elbowExcess > 0f) dDeg[Elbow] -= Mathf.Min(elbowBiasDegPerStep, elbowExcess * 0.2f) * stepScale / Mathf.Max(scale, 1e-3f);
 
         // --- Escritura de targets con ANTI-WINDUP ---
         //
@@ -312,11 +385,19 @@ public class PandaIK : MonoBehaviour
         // ritmo, no interviene y la direccion del movimiento queda intacta.
         for (int i = 0; i < PandaArm.N; i++)
         {
-            float desired = arm.TargetDeg(i) + dDeg[i] * scale;
+            float previous = arm.TargetDeg(i);
+            float desired = previous + dDeg[i] * scale;
             float actual  = arm.CurrentDeg(i);
             desired = Mathf.Clamp(desired, actual - maxLeadDegrees, actual + maxLeadDegrees);
-            arm.SetTargetDeg(i, desired);
+            if (smoothServo)
+            {
+                // Velocidad de la referencia: el drive la sigue sin retraso (ver PandaArm).
+                float cap = MaxDegPerSec[i] * speedFactor;
+                arm.SetTargetDeg(i, desired, Mathf.Clamp((desired - previous) / dt, -cap, cap));
+            }
+            else arm.SetTargetDeg(i, desired);
         }
+        leadActive = smoothServo;
     }
 
     /// <summary>Arma la matriz aumentada [A | b] con A = J J^T + lambda^2 I.</summary>
@@ -326,13 +407,13 @@ public class PandaIK : MonoBehaviour
             for (int c = 0; c < M; c++)
                 A[r, c] = 0f;
 
+        // Buffer reutilizado: antes se creaba un arreglo por junta en cada paso de fisica
+        // (~840 por segundo a 120 Hz), basura que en el celular dispara el recolector.
+        float[] col = _col;
         for (int i = 0; i < PandaArm.N; i++)
         {
-            float[] col =
-            {
-                colLin[i].x, colLin[i].y, colLin[i].z,
-                colAng[i].x, colAng[i].y, colAng[i].z
-            };
+            col[0] = colLin[i].x; col[1] = colLin[i].y; col[2] = colLin[i].z;
+            col[3] = colAng[i].x; col[4] = colAng[i].y; col[5] = colAng[i].z;
 
             for (int r = 0; r < M; r++)
                 for (int c = 0; c < M; c++)

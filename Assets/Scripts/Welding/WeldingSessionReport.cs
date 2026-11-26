@@ -62,6 +62,13 @@ namespace FrankaVR.Welding
             if (max == task.BurnPoints) return "Perforacion: evita quedarte en un punto y revisa la corriente.";
             if (max == task.UndercutPoints) return "Socavado: revisa los angulos de trabajo y avance.";
             if (max == task.PorosityPoints) return "Porosidad: manten la distancia boquilla-pieza constante (~15 mm).";
+            // Frio solo en las puntas: el trazo grabado empezo tarde o termino antes (no es la velocidad).
+            if (task.Seam != null)
+            {
+                int n = task.Seam.Count, edge = Mathf.Max(1, n * 15 / 100), middle = 0;
+                for (int i = edge; i < n - edge; i++) if (task.Seam.QualityAt(i) == WeldQuality.Cold) middle++;
+                if (middle == 0) return "Falta de fusion en los extremos: graba desde el inicio de la junta hasta el final.";
+            }
             return "Falta de fusion: baja la velocidad programada o sube la corriente.";
         }
 

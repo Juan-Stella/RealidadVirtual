@@ -5,7 +5,8 @@ using FrankaVR.Welding;
 namespace FrankaVR.V6
 {
     /// <summary>
-    /// Panel lateral limpio con resumen del curso y atajos.
+    /// Panel lateral limpio con resumen del curso y atajos, y el documento de CONTROLES
+    /// (tabla teclado / mando que se abre con el boton CONTROLES o F1).
     /// No reemplaza la logica del curso; solo mejora presentacion.
     /// </summary>
     public class CourseWorldMenuV6 : MonoBehaviour
@@ -19,6 +20,11 @@ namespace FrankaVR.V6
         [Tooltip("Oculta el panel grande mientras se esta soldando; queda solo el HUD compacto.")]
         public bool HideWhileRunning = true;
 
+        [Header("Documento de controles")]
+        public float ControlsDistance = 1.3f;
+        public float ControlsVerticalOffset = 0f;
+        public bool ControlsOpen { get; private set; }
+
         Transform _root;
         TextMesh _title, _exercise, _list, _keys;
         Material _bgMat;
@@ -26,6 +32,46 @@ namespace FrankaVR.V6
         DesktopNavigatorV6 _navigator;
         CoursePhaseV5 _lastPhase;
         GazeButton[] _exerciseButtons = new GazeButton[5];
+        Transform _doc;
+        Material _docBgMat, _closeMat;
+        const float DocWidth = 1.62f, DocHeight = 1.24f;
+
+        // Accion | teclado | mando. Las filas con '#' son titulos de seccion.
+        static readonly string[,] ControlRows =
+        {
+            { "#MOVER LA TORCHA", "TECLADO", "MANDO" },
+            { "Mover", "W A S D", "Palanca" },
+            { "Subir / bajar", "E / Q", "Apretar palanca + mover" },
+            { "Inclinar la torcha", "I K J L", "Inclinar el mando" },
+            { "Girar · enderezar", "U O · V", "—" },
+            { "Lento / rápido", "Ctrl / Shift", "Poca / mucha palanca" },
+            { "#ENSEÑAR (GRABAR)", "TECLADO", "MANDO" },
+            { "Ir al inicio de la junta", "B", "ACERCAR" },
+            { "Grabar (mantener)", "Espacio", "GATILLO" },
+            { "Deshacer último tramo", "Z", "DESHACER" },
+            { "Borrar todo", "R", "DESHACER largo" },
+            { "#EJECUTAR", "TECLADO", "MANDO" },
+            { "El robot repite con arco", "Enter", "OK" },
+            { "Retirar / abortar", "C", "RETIRAR" },
+            { "Velocidad del programa", "- / +", "—" },
+            { "Alambre, corriente, careta", "Tab, [ ], H", "—" },
+            { "#VISTA Y MENÚ", "TECLADO", "MANDO" },
+            { "Elegir un botón", "Mirarlo 1 s o clic", "Mirarlo + OK" },
+            { "Cambiar vista", "N / P o VISTA", "ACERCAR largo" },
+            { "Moverse por la planta", "MOVERSE o F2: clic en piso, WASD", "MOVERSE: mirar + OK, palanca" },
+            { "Calibrar mando y vista", "—", "OK largo" },
+            { "Moverse y mirar (PC)", "Flechas, RePág/AvPág, mouse", "—" },
+            { "Zoom (PC)", "Rueda · Retroceso", "—" },
+            { "Menú · terminar · ayuda", "M · F · F1", "CONTROLES" },
+        };
+
+        public void ToggleControls() => SetControlsOpen(!ControlsOpen);
+
+        public void SetControlsOpen(bool open)
+        {
+            ControlsOpen = open;
+            if (_doc != null && _doc.gameObject.activeSelf != open) _doc.gameObject.SetActive(open);
+        }
 
         void Start()
         {
@@ -68,18 +114,86 @@ namespace FrankaVR.V6
             GazeButton.CreateUI(_root, "PRACTICAR", new Vector3(-0.30f,-0.32f,-0.014f), 0.27f, () => Course.StartTraining(), _bgMat);
             GazeButton.CreateUI(_root, "EXAMEN", new Vector3(0f,-0.32f,-0.014f), 0.27f, () => Course.StartExam(), _bgMat);
             GazeButton.CreateUI(_root, "MENU", new Vector3(0.30f,-0.32f,-0.014f), 0.27f, () => Course.BackToMenu(), _bgMat);
+            GazeButton.CreateUI(_root, "CONTROLES", new Vector3(0f,-0.395f,-0.014f), 0.57f, () => SetControlsOpen(true), _bgMat);
+            BuildControlsDocument(sh);
+        }
+
+        /// Documento de controles: panel grande delante de la camara, tabla de tres columnas.
+        void BuildControlsDocument(Shader sh)
+        {
+            GameObject doc = new GameObject("ControlesV6_Runtime");
+            _doc = doc.transform;
+            GameObject bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            bg.name = "Fondo";
+            bg.transform.SetParent(_doc, false);
+            bg.transform.localScale = new Vector3(DocWidth, DocHeight, 1f);
+            SafeDestroy(bg.GetComponent<Collider>());
+            Renderer bgRenderer = bg.GetComponent<Renderer>();
+            bgRenderer.sortingOrder = -10;
+            // Documento modal: fondo y botones encima de la escena (el robot suele quedar mas cerca).
+            Shader panel = Resources.Load<Shader>("FrankaVRUIPanel");
+            if (panel != null) sh = panel;
+            if (sh != null)
+            {
+                _docBgMat = new Material(sh); _docBgMat.color = new Color(0.03f, 0.045f, 0.065f, 1f);
+                bgRenderer.sharedMaterial = _docBgMat;
+                _closeMat = new Material(sh); _closeMat.color = new Color(0.30f, 0.10f, 0.06f, 0.95f);
+            }
+
+            TextMesh title = MakeText(_doc, "Titulo", new Vector3(-DocWidth * 0.5f + 0.06f, DocHeight * 0.5f - 0.07f, -0.004f), 66, 0.0085f,
+                new Color(0.95f, 0.98f, 1f), TextAnchor.MiddleLeft);
+            SetText(title, "CONTROLES · TECLADO Y MANDO", 1.10f, 0.06f);
+            GazeButton.CreateUI(_doc, "CERRAR", new Vector3(DocWidth * 0.5f - 0.16f, DocHeight * 0.5f - 0.07f, -0.014f), 0.24f,
+                () => SetControlsOpen(false), _closeMat != null ? _closeMat : _bgMat);
+
+            // Tres columnas con la misma cantidad de lineas y la misma escala: las filas quedan alineadas.
+            int rows = ControlRows.GetLength(0);
+            float[] x = { -DocWidth * 0.5f + 0.06f, -0.21f, 0.29f };
+            float[] width = { 0.51f, 0.47f, 0.47f };
+            Color[] colors = { new Color(0.86f, 0.91f, 0.97f), new Color(0.62f, 0.86f, 1f), new Color(0.55f, 1f, 0.70f) };
+            TextMesh[] columns = new TextMesh[3];
+            float top = DocHeight * 0.5f - 0.15f, height = DocHeight - 0.28f, scale = 1f;
+            for (int c = 0; c < 3; c++)
+            {
+                var text = new System.Text.StringBuilder();
+                for (int r = 0; r < rows; r++)
+                {
+                    string cell = ControlRows[r, c];
+                    bool section = ControlRows[r, 0].StartsWith("#");
+                    if (c == 0 && section) cell = cell.Substring(1);
+                    if (section) cell = "<color=#FFC857><b>" + cell + "</b></color>";
+                    if (r > 0) text.Append('\n');
+                    text.Append(cell);
+                }
+                columns[c] = MakeText(_doc, "Columna" + c, new Vector3(x[c], top, -0.004f), 64, 0.0062f, colors[c], TextAnchor.UpperLeft);
+                columns[c].text = text.ToString();
+                Bounds b = columns[c].GetComponent<Renderer>().localBounds;
+                scale = Mathf.Min(scale, width[c] / Mathf.Max(0.001f, b.size.x), height / Mathf.Max(0.001f, b.size.y));
+            }
+            foreach (TextMesh column in columns) column.transform.localScale = Vector3.one * scale;
+
+            TextMesh note = MakeText(_doc, "Nota", new Vector3(0f, -DocHeight * 0.5f + 0.05f, -0.004f), 46, 0.0065f,
+                new Color(0.68f, 0.76f, 0.86f), TextAnchor.MiddleCenter);
+            SetText(note, "Mirá un botón 1 s (o miralo y apretá OK en el mando) para elegirlo · F1, Esc o CERRAR para volver",
+                DocWidth - 0.12f, 0.04f);
+            // El orden de dibujo transparente va primero por sortingOrder: sin este salto,
+            // vidrios y carteles del taller se dibujan despues y atraviesan el documento.
+            foreach (Renderer r in doc.GetComponentsInChildren<Renderer>(true)) r.sortingOrder += 1000;
+            doc.SetActive(false);
         }
 
         TextMesh MakeText(string name, Vector3 localPos, int fontSize, float charSize, Color color, TextAnchor anchor)
+            => MakeText(_root, name, localPos, fontSize, charSize, color, anchor);
+
+        static TextMesh MakeText(Transform parent, string name, Vector3 localPos, int fontSize, float charSize, Color color, TextAnchor anchor)
         {
             GameObject go = new GameObject(name);
-            go.transform.SetParent(_root, false);
+            go.transform.SetParent(parent, false);
             go.transform.localPosition = localPos;
             TextMesh tm = go.AddComponent<TextMesh>();
             tm.anchor = anchor;
-            tm.alignment = anchor == TextAnchor.MiddleLeft ? TextAlignment.Left : TextAlignment.Center;
-            tm.fontSize = fontSize;
-            tm.characterSize = charSize;
+            tm.alignment = anchor == TextAnchor.MiddleLeft || anchor == TextAnchor.UpperLeft ? TextAlignment.Left : TextAlignment.Center;
+            CrispTextV6.Setup(tm, fontSize, charSize);
             tm.color = color;
             go.GetComponent<Renderer>().sortingOrder = 10;
             return tm;
@@ -90,19 +204,27 @@ namespace FrankaVR.V6
             if (_root == null || PlayerCamera == null) return;
             if (Course != null)
             {
-                if (Course.Phase == CoursePhaseV5.Results && _lastPhase != CoursePhaseV5.Results && _hud != null)
-                    _hud.ShowHelpDuringRunning = false;
+                if (Course.Phase == CoursePhaseV5.Results && _lastPhase != CoursePhaseV5.Results) SetControlsOpen(false);
                 _lastPhase = Course.Phase;
             }
-
-            bool help = _hud != null && _hud.ShowHelpDuringRunning;
-            bool shouldShow = help || !(HideWhileRunning && Course != null && Course.Phase == CoursePhaseV5.Running);
-            if (_root.gameObject.activeSelf != shouldShow) _root.gameObject.SetActive(shouldShow);
-            if (!shouldShow) return;
+            // Compatibilidad: el viejo "mostrar ayuda" del HUD ahora abre el documento.
+            if (_hud != null && _hud.ShowHelpDuringRunning) { _hud.ShowHelpDuringRunning = false; SetControlsOpen(true); }
+            if (Input.GetKeyDown(KeyCode.F1)) ToggleControls();
+            if (ControlsOpen && Input.GetKeyDown(KeyCode.Escape)) SetControlsOpen(false);
 
             Transform cam = PlayerCamera.transform;
             Transform body = Application.platform == RuntimePlatform.Android && cam.parent != null ? cam.parent : cam;
             float scale = _navigator != null ? _navigator.InterfaceScale : 1f;
+            if (ControlsOpen && _doc != null)
+            {
+                _doc.localScale = Vector3.one * scale;
+                _doc.position = cam.position + body.forward * ControlsDistance + body.up * (ControlsVerticalOffset * scale);
+                _doc.rotation = Quaternion.LookRotation(_doc.position - cam.position, body.up);
+            }
+
+            bool shouldShow = !ControlsOpen && !(HideWhileRunning && Course != null && Course.Phase == CoursePhaseV5.Running);
+            if (_root.gameObject.activeSelf != shouldShow) _root.gameObject.SetActive(shouldShow);
+            if (!shouldShow) return;
             _root.localScale = Vector3.one * scale;
             Vector3 fwd = cam.forward; fwd.y = 0f; if (fwd.sqrMagnitude < 1e-6f) fwd = Vector3.forward; else fwd.Normalize();
             Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
@@ -113,8 +235,19 @@ namespace FrankaVR.V6
             _root.rotation = FollowCameraYaw
                 ? Quaternion.LookRotation(_root.position - cam.position, body.up)
                 : Quaternion.identity;
-            UpdateText();
+            // Rearmar los textos genera basura en cada cuadro (en el celular, tirones del GC):
+            // solo al cambiar el estado del curso y, por las dudas, dos veces por segundo.
+            int state = Course != null ? ((int)Course.Phase * 31 + Course.SelectedExercise) * 31 + (int)Course.Mode : -1;
+            if (state != _textState || Time.unscaledTime >= _nextText)
+            {
+                _textState = state;
+                _nextText = Time.unscaledTime + 0.5f;
+                UpdateText();
+            }
         }
+
+        int _textState = int.MinValue;
+        float _nextText;
 
         void UpdateText()
         {
@@ -128,8 +261,7 @@ namespace FrankaVR.V6
             string body = "TRABAJOS";
             WorkOrder[] catalog = WorkOrder.Catalog;
             for (int i = 0; i < catalog.Length; i++) body += "\n" + BuildExerciseLine(i, catalog[i].Id + "  " + catalog[i].Title);
-            bool selection = Course != null && Course.Phase == CoursePhaseV5.Selection &&
-                (_hud == null || !_hud.ShowHelpDuringRunning);
+            bool selection = Course != null && Course.Phase == CoursePhaseV5.Selection;
             foreach (GazeButton button in _exerciseButtons) if (button != null) button.gameObject.SetActive(selection);
             if (selection) body = "";
 
@@ -137,8 +269,9 @@ namespace FrankaVR.V6
             {
                 WorkOrder order = Course.SelectedOrder;
                 body = Wrap(order.Brief, 45) + "\n\n" +
-                    "1. ENSEÑAR: con Espacio sobre la junta, recorré la\ncostura con la torcha. Queda grabada.\n" +
-                    "2. EJECUTAR (Enter): el robot la repite con arco.\n\n" +
+                    "1. ENSEÑAR: Espacio (GATILLO en el mando) sobre la\njunta y recorré la costura. Queda grabada.\n" +
+                    "2. EJECUTAR: Enter (OK): el robot la repite con arco.\n" +
+                    "CONTROLES: todos los comandos.\n\n" +
                     order.RecommendedElectrode + " · " + order.RecommendedAmps.ToString("0") + " A · " +
                     order.RecommendedSpeedMmS.ToString("0") + " mm/s";
             }
@@ -156,18 +289,6 @@ namespace FrankaVR.V6
                     Wrap(result.advice, 45) + "\n" +
                     (string.IsNullOrEmpty(Course.ResultSaveError) ? "Resultado y trayectoria guardados (JSON/CSV)" : Course.ResultSaveError);
             }
-            if (_hud != null && _hud.ShowHelpDuringRunning)
-                body = "ROBOT  WASD/QE: mover (acelera al mantener)\n" +
-                    "I/K J/L: inclinar · U/O: girar · V: enderezar\n" +
-                    "ENSEÑAR  Espacio sobre la junta: graba y las\n" +
-                    "teclas siguen la costura · Q/E: distancia\n" +
-                    "Z: deshacer trazo · R: borrar · Enter: ejecutar\n" +
-                    "Práctica: B ir al inicio · V ángulo recomendado\n" +
-                    "Tab: alambre · [ / ]: corriente · - / +: velocidad\n" +
-                    "C: retirar / abortar · Ctrl: fino · Shift: rápido\n" +
-                    "VISTA  Flechas/Pag · Mouse derecho · Rueda: zoom\n" +
-                    "N/P: estaciones · H: careta · M: menú\n" +
-                    "F: finalizar · F1: cerrar ayuda";
             SetText(_list, body, 0.88f, 0.36f);
             SetText(_keys, "", 0.88f, 0.10f);
         }
@@ -213,7 +334,10 @@ namespace FrankaVR.V6
         void OnDestroy()
         {
             if (_root != null) SafeDestroy(_root.gameObject);
+            if (_doc != null) SafeDestroy(_doc.gameObject);
             if (_bgMat != null) SafeDestroy(_bgMat);
+            if (_docBgMat != null) SafeDestroy(_docBgMat);
+            if (_closeMat != null) SafeDestroy(_closeMat);
         }
     }
 }

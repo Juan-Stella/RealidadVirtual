@@ -17,6 +17,8 @@ El operario mueve el robot por toda la junta con la torcha. El sistema graba esa
 | M3 | Filete frontal entre la base y la placa. La torcha apunta hacia el robot; usar VISTA | Avanzado |
 
 ## Uso (teclado, hoy; los mismos comandos irán al joystick ESP32)
+El botón **CONTROLES** (o **F1**) abre la tabla completa de comandos de teclado y mando.
+
 1. Elegir el trabajo y pulsar **PRACTICAR** (o EXAMEN).
 2. **B**: lleva la torcha al inicio de la junta. Sube por encima de la pieza, se traslada, baja y queda a la distancia de arco.
 3. **ENSEÑAR**: mantener **Espacio** (el gatillo) cerca de la junta y avanzar con la tecla que indica el HUD. Mientras se graba, la torcha queda guiada sobre la junta.

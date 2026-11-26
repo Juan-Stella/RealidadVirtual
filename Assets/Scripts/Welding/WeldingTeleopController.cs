@@ -273,6 +273,8 @@ namespace FrankaVR.Welding
                 else { ViewAxes(out Vector3 f, out Vector3 r); _keyboard.TiltRight = r; _keyboard.TiltForward = f; }
             }
             TeleopCommand cmd = _in.Poll(Ik.endEffector.rotation);
+            // Modo MOVERSE: la palanca/WASD mueven al operario, no la torcha.
+            if (FrankaVR.V6.OperatorMoveV6.Active) { cmd.TranslationRate = Vector3.zero; cmd.AnalogMagnitude = 0f; cmd.SparkHeld = false; }
             bool keyboardMotion = _in is KeyboardTeleopInput ||
                 (_in is HybridTeleopInput hybrid && !hybrid.GloveMotionActive);
             // Practica: V cerca de la junta pone el angulo recomendado en vez de la vertical.
@@ -344,6 +346,7 @@ namespace FrankaVR.Welding
                 _smoothedPos = Vector3.SmoothDamp(_smoothedPos, _targetPos, ref _smoothVel,
                     Mathf.Max(0.001f, PositionSmoothTime), Mathf.Infinity, dt);
                 Ik.target.position = _smoothedPos;
+                Ik.SetTargetVelocity(_smoothVel);
                 Ik.approachDirection = axis;
                 if (_marker != null) _marker.position = _smoothedPos;
                 return;
@@ -430,7 +433,9 @@ namespace FrankaVR.Welding
                     if (_keyboard != null) _keyboard.SetOrientation(Quaternion.FromToRotation(BaseApproach.normalized, axis));
                 }
                 _physicalTarget = Vector3.MoveTowards(_physicalTarget, destination, ApproachSpeed * dt);
-                if (Vector3.Distance(actual, destination) < 0.005f)
+                // La ultima etapa termina con la punta a la distancia de arco (no 5 mm arriba).
+                float reach = _approachStage == 3 && _approachTime < 2f ? 0.002f : 0.005f;
+                if (Vector3.Distance(actual, destination) < reach)
                 {
                     if (++_approachStage > 3) _approachStage = -1;
                     _approachTime = 0f;
@@ -493,6 +498,8 @@ namespace FrankaVR.Welding
             _targetPos = _smoothedPos;
             _physicalSmooth = _smoothedPos + offset;
             Ik.target.position = _smoothedPos;
+            // Prealimentacion del servo: la IK sigue esta velocidad sin esperar a acumular error.
+            Ik.SetTargetVelocity(_physicalVelocity);
             Ik.approachDirection = axis;
             if (_marker != null) _marker.position = _physicalSmooth;
             UpdateSeamTelemetry(actual, dt);
@@ -553,7 +560,8 @@ namespace FrankaVR.Welding
             {
                 // El programa avanza solo si el robot lo sigue; si se atrasa, espera.
                 // Arranque y crater: el arco queda quieto ArcDwellSec en cada extremo, como en un robot real.
-                _dwell += dt;
+                // La espera cuenta con el arco ya establecido (el cebado no la consume).
+                if (Torch == null || Torch.Arcing || _playTime > 1.5f) _dwell += dt;
                 if (_dwell > ArcDwellSec && _playS < total && Vector3.Distance(actual, _physicalTarget) < 0.004f)
                 {
                     _playS = Mathf.Min(total, _playS + _playSpeed * dt);
@@ -566,7 +574,9 @@ namespace FrankaVR.Welding
             else destination = point - dir * 0.05f;
             axis = LimitTilt(dir);
             _physicalTarget = _playStage == 2 ? destination : Vector3.MoveTowards(_physicalTarget, destination, ApproachSpeed * dt);
-            bool arrived = Vector3.Distance(actual, destination) < 0.004f && (_playStage != 2 || (_playS >= total && _dwell > ArcDwellSec));
+            // Cebar recien con la punta sobre el primer punto: si no, el arco arranca largo y la chapa queda fria.
+            float reach = _playStage == 1 && _playTime < 3f ? 0.002f : 0.004f;
+            bool arrived = Vector3.Distance(actual, destination) < reach && (_playStage != 2 || (_playS >= total && _dwell > ArcDwellSec));
             if (arrived) { _playStage++; _playTime = _dwell = 0f; }
             if (_playTime > 15f) { AssistMessage = "EJECUCIÓN DETENIDA — el robot no alcanzó la trayectoria"; _playStage = 4; }
             if (_playStage > 3)
@@ -683,7 +693,7 @@ namespace FrankaVR.Welding
                 MotionBlocked = true;
                 Ik.solving = false;
                 AssistMessage = NearJointLimit() ? "LÍMITE DE ALCANCE — mover en otra dirección" :
-                    "MOVIMIENTO BLOQUEADO — E: retirar / C: recuperar";
+                    "MOVIMIENTO BLOQUEADO — mover en otra dirección o RETIRAR (C)";
             }
             _stallTime = 0f;
         }
